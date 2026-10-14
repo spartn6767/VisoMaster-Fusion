@@ -184,6 +184,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.fixed_unet_model_name = "RefLDM_UNET_EXTERNAL_KV"
 
         self.loaded_embedding_filename: str = ""
+        # Workspace file that "Save Current Workspace" overwrites without prompting
+        self.current_workspace_path: str = ""
 
         # List of (start_frame, end_frame) tuples for job segments
         # end_frame can be None if a start marker is set but the end is not yet set.
@@ -724,12 +726,16 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.actionOpen_Output_Folder = QtGui.QAction(
             "Open Output Folder", self.menuFile
         )
+        self.actionSave_WorkspaceAs = QtGui.QAction(
+            "Save Workspace As...", self.menuFile
+        )
 
         self.menuFile.clear()
         self.menuFile.addAction(self.actionLoad_SavedWorkspace)
         self.menuFile.addAction(self.actionReset_to_LastWorkspace)
         self.menuFile.addAction(self.actionSave_LastWorkspace)
         self.menuFile.addAction(self.actionSave_CurrentWorkspace)
+        self.menuFile.addAction(self.actionSave_WorkspaceAs)
         self.menuFile.addSeparator()
         self.menuFile.addAction(self.actionOpen_Videos_Folder)
         self.menuFile.addAction(self.actionOpen_Video_Files)

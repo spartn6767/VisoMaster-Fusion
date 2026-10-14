@@ -762,6 +762,13 @@ def set_up_menu_actions(main_window: "MainWindow"):
             main_window,
         )
     )
+    main_window.actionSave_WorkspaceAs.triggered.connect(
+        partial(
+            save_load_actions.save_current_workspace,
+            main_window,
+            save_as=True,
+        )
+    )
 
     def quit_without_saving(_checked=False):
         # close() rather than QCoreApplication.quit() so closeEvent still runs and

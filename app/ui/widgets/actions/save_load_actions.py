@@ -981,6 +981,7 @@ def load_saved_workspace(
             main_window.loaded_embedding_filename = data.get(
                 "loaded_embedding_filename", ""
             )
+            _restore_current_workspace_path(main_window, str(data_filename), data)
             common_widget_actions.set_control_widgets_values(main_window)
             # Set output folder using .get() with a default empty string
             output_folder = control.get("OutputMediaFolder", "")
@@ -1214,17 +1215,46 @@ def load_saved_workspace(
             return
 
 
+def _is_last_workspace_file(data_filename: str | Path) -> bool:
+    return str(data_filename).endswith("last_workspace.json")
+
+
+def _restore_current_workspace_path(
+    main_window: "MainWindow", data_filename: str, data: dict
+) -> None:
+    """Remembers which workspace file was opened so it can be saved in place."""
+    if not _is_last_workspace_file(data_filename):
+        main_window.current_workspace_path = str(data_filename)
+        return
+    remembered = data.get("current_workspace_path") or ""
+    main_window.current_workspace_path = (
+        remembered if remembered and Path(remembered).is_file() else ""
+    )
+
+
 def save_current_workspace(
-    main_window: "MainWindow", data_filename: str | Path | bool = False
+    main_window: "MainWindow",
+    data_filename: str | Path | bool = False,
+    save_as: bool = False,
 ):
+    current_workspace_path = getattr(main_window, "current_workspace_path", "") or ""
     # Prompt for filename FIRST so we can use it for the registry and avoid useless work if cancelled
     if data_filename is False:
-        dialog_filename, _ = QtWidgets.QFileDialog.getSaveFileName(
-            main_window, filter="JSON (*.json)"
-        )
-        if not dialog_filename:
-            return  # User cancelled the save operation
-        data_filename = dialog_filename
+        if (
+            not save_as
+            and current_workspace_path
+            and Path(current_workspace_path).is_file()
+        ):
+            data_filename = current_workspace_path
+        else:
+            dialog_filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+                main_window,
+                dir=current_workspace_path,
+                filter="JSON (*.json)",
+            )
+            if not dialog_filename:
+                return  # User cancelled the save operation
+            data_filename = dialog_filename
 
     resolved_parent_path = str(data_filename)
 
@@ -1474,6 +1504,11 @@ def save_current_workspace(
         "last_target_media_folder_path": main_window.last_target_media_folder_path,
         "last_input_media_folder_path": main_window.last_input_media_folder_path,
         "loaded_embedding_filename": main_window.loaded_embedding_filename,
+        "current_workspace_path": (
+            current_workspace_path
+            if _is_last_workspace_file(str(data_filename))
+            else str(data_filename)
+        ),
         "current_widget_parameters": current_params_to_save,  # Use the safely prepared dict
         "tab_state": tab_state,  # Add the tab state to the saved data
         "window_state_data": window_state_data,
@@ -1489,6 +1524,7 @@ def save_current_workspace(
             if str(data_filename).endswith("last_workspace.json"):
                 print(f"[INFO] Last workspace saved to: {data_filename}")
             else:
+                main_window.current_workspace_path = str(data_filename)
                 common_widget_actions.create_and_show_toast_message(
                     main_window,
                     "Workspace Saved",

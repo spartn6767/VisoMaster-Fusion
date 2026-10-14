@@ -1252,3 +1252,120 @@ def test_load_workspace_restores_target_media_filters_without_double_loading_web
     assert filter_calls == ["final-filter"]
     assert webcam_calls == ["final-webcam"]
     assert flushed_batches == ["flush"]
+
+
+def _workspace_window_for_save_path(tmp_path: Path):
+    return _make_workspace_main_window(
+        tmp_path, is_theatre_mode=False, is_full_screen=False, is_maximized=False
+    )
+
+
+def _patch_save_dialog(monkeypatch, return_path: str) -> MagicMock:
+    get_save_file_name = MagicMock(return_value=(return_path, ""))
+    monkeypatch.setattr(
+        save_load_actions.QtWidgets,
+        "QFileDialog",
+        SimpleNamespace(getSaveFileName=get_save_file_name),
+    )
+    return get_save_file_name
+
+
+def test_save_current_workspace_overwrites_current_file_without_dialog(
+    tmp_path, monkeypatch
+):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+    dialog = _patch_save_dialog(monkeypatch, str(tmp_path / "other.json"))
+
+    save_current_workspace(main_window, False)
+
+    dialog.assert_not_called()
+    assert _read_saved_workspace(current)["current_workspace_path"] == str(current)
+    assert not (tmp_path / "other.json").exists()
+
+
+def test_save_current_workspace_prompts_when_no_current_file(tmp_path, monkeypatch):
+    chosen = tmp_path / "new_project.json"
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(tmp_path / "deleted.json")
+    dialog = _patch_save_dialog(monkeypatch, str(chosen))
+
+    save_current_workspace(main_window, False)
+
+    dialog.assert_called_once()
+    assert chosen.is_file()
+    assert main_window.current_workspace_path == str(chosen)
+
+
+def test_save_workspace_as_always_prompts(tmp_path, monkeypatch):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    chosen = tmp_path / "copy.json"
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+    dialog = _patch_save_dialog(monkeypatch, str(chosen))
+
+    save_current_workspace(main_window, False, save_as=True)
+
+    dialog.assert_called_once()
+    assert current.read_text() == "{}"
+    assert main_window.current_workspace_path == str(chosen)
+
+
+def test_save_workspace_as_cancel_keeps_current_file(tmp_path, monkeypatch):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+    _patch_save_dialog(monkeypatch, "")
+
+    save_current_workspace(main_window, False, save_as=True)
+
+    assert current.read_text() == "{}"
+    assert main_window.current_workspace_path == str(current)
+
+
+def test_last_workspace_autosave_remembers_current_file(tmp_path):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    last = tmp_path / "last_workspace.json"
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+
+    save_current_workspace(main_window, str(last))
+
+    assert _read_saved_workspace(last)["current_workspace_path"] == str(current)
+    assert main_window.current_workspace_path == str(current)
+
+
+@pytest.mark.parametrize(
+    "loaded_name, remembered_exists, expected",
+    [
+        ("project.json", False, "loaded"),
+        ("last_workspace.json", True, "remembered"),
+        ("last_workspace.json", False, ""),
+    ],
+)
+def test_restore_current_workspace_path(
+    tmp_path, loaded_name, remembered_exists, expected
+):
+    loaded = tmp_path / loaded_name
+    remembered = tmp_path / "remembered.json"
+    if remembered_exists:
+        remembered.write_text("{}")
+    main_window = SimpleNamespace(current_workspace_path="stale")
+
+    save_load_actions._restore_current_workspace_path(
+        main_window, str(loaded), {"current_workspace_path": str(remembered)}
+    )
+
+    assert (
+        main_window.current_workspace_path
+        == {
+            "loaded": str(loaded),
+            "remembered": str(remembered),
+            "": "",
+        }[expected]
+    )
