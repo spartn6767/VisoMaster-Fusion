@@ -1178,10 +1178,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             elif startup_mode == save_load_actions.STARTUP_ASK:
                 load_dialog = widget_components.LoadLastWorkspaceDialog(self)
                 load_dialog.exec_()
-            else:
-                save_load_actions.load_workspace_settings_only(
-                    self, last_workspace_path
-                )
+            # Start Blank: keep the freshly initialised defaults
         else:
             # First launch or no workspace: Prompt for execution provider
             options = platform_support.available_execution_providers()

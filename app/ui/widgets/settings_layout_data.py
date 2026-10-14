@@ -800,7 +800,7 @@ SETTINGS_LAYOUT_DATA: Any = {
             "label": "On Startup",
             "options": ["Start Blank", "Load Last Workspace", "Ask"],
             "default": "Start Blank",
-            "help": "What to do when the app opens.\nStart Blank: open an empty workspace, keeping your settings from last time.\nLoad Last Workspace: reopen media, faces and markers from last time.\nAsk: show the 'load last workspace' dialog.",
+            "help": "What to do when the app opens.\nStart Blank: open an empty workspace with default settings.\nLoad Last Workspace: reopen media, faces and markers from last time.\nAsk: show the 'load last workspace' dialog.",
         },
         "SliderMouseWheelControlToggle": {
             "level": 1,

@@ -1463,32 +1463,3 @@ def test_get_startup_workspace_mode_unreadable_file_starts_blank(tmp_path):
     path.write_text("{not json")
 
     assert save_load_actions.get_startup_workspace_mode(path) == "Start Blank"
-
-
-def test_load_workspace_settings_only_applies_control(tmp_path, monkeypatch):
-    path = tmp_path / "last_workspace.json"
-    path.write_text(
-        json.dumps(
-            {
-                "control": {"OutputMediaFolder": "/out", "SomeToggle": True},
-                "target_medias_data": [{"media_path": "/video.mp4", "media_id": "1"}],
-            }
-        )
-    )
-    monkeypatch.setattr(
-        save_load_actions,
-        "sanitize_state_dictionary",
-        lambda saved, current: {k: v for k, v in saved.items() if k in current},
-    )
-    for name in ("set_control_widgets_values", "create_control"):
-        monkeypatch.setattr(save_load_actions.common_widget_actions, name, MagicMock())
-    line_edit = SimpleNamespace(setText=MagicMock())
-    main_window = SimpleNamespace(
-        control={"OutputMediaFolder": "", "SomeToggle": False},
-        outputFolderLineEdit=line_edit,
-    )
-
-    save_load_actions.load_workspace_settings_only(main_window, path)
-
-    assert main_window.control == {"OutputMediaFolder": "/out", "SomeToggle": True}
-    line_edit.setText.assert_called_once_with("/out")

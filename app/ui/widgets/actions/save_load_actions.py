@@ -632,24 +632,6 @@ def get_startup_workspace_mode(data_filename: str | Path) -> str:
     return STARTUP_START_BLANK
 
 
-def load_workspace_settings_only(
-    main_window: "MainWindow", data_filename: str | Path
-) -> None:
-    """Applies the saved settings (control) without loading media, faces or markers."""
-    saved_control = _read_workspace_control(data_filename)
-    if not saved_control:
-        return
-    control = sanitize_state_dictionary(saved_control, main_window.control)
-    for control_name, control_value in control.items():
-        main_window.control[control_name] = control_value
-    common_widget_actions.set_control_widgets_values(main_window)
-    output_folder = control.get("OutputMediaFolder", "")
-    common_widget_actions.create_control(
-        main_window, "OutputMediaFolder", output_folder
-    )
-    main_window.outputFolderLineEdit.setText(output_folder)
-
-
 def load_saved_workspace(
     main_window: "MainWindow", data_filename: Union[str, bool] = False
 ):
