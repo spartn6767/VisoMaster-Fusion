@@ -1492,3 +1492,27 @@ def test_load_workspace_settings_only_applies_control(tmp_path, monkeypatch):
 
     assert main_window.control == {"OutputMediaFolder": "/out", "SomeToggle": True}
     line_edit.setText.assert_called_once_with("/out")
+
+
+def test_upgrade_legacy_control_applies_new_defaults():
+    legacy = {
+        "InputFacesFolderRecursiveToggle": False,
+        "ShowSeekBarThumbnailsToggle": True,
+        "OtherToggle": True,
+    }
+
+    upgraded = save_load_actions.upgrade_legacy_control(legacy)
+
+    assert upgraded["InputFacesFolderRecursiveToggle"] is True
+    assert upgraded["ShowSeekBarThumbnailsToggle"] is False
+    assert upgraded["OtherToggle"] is True
+
+
+def test_upgrade_legacy_control_keeps_choices_saved_after_upgrade():
+    current = {
+        "StartupWorkspaceSelection": "Start Blank",
+        "InputFacesFolderRecursiveToggle": False,
+        "ShowSeekBarThumbnailsToggle": True,
+    }
+
+    assert save_load_actions.upgrade_legacy_control(current) == current

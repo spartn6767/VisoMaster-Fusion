@@ -611,6 +611,19 @@ STARTUP_START_BLANK = "Start Blank"
 STARTUP_LOAD_LAST = "Load Last Workspace"
 STARTUP_ASK = "Ask"
 
+# Defaults changed alongside StartupWorkspaceSelection; settings saved before
+# that key existed get the new values once, later choices are kept.
+_LEGACY_CONTROL_DEFAULT_UPGRADES = {
+    "InputFacesFolderRecursiveToggle": True,
+    "ShowSeekBarThumbnailsToggle": False,
+}
+
+
+def upgrade_legacy_control(saved_control: dict) -> dict:
+    if "StartupWorkspaceSelection" in saved_control:
+        return saved_control
+    return {**saved_control, **_LEGACY_CONTROL_DEFAULT_UPGRADES}
+
 
 def _read_workspace_control(data_filename: str | Path) -> dict:
     try:
@@ -639,7 +652,9 @@ def load_workspace_settings_only(
     saved_control = _read_workspace_control(data_filename)
     if not saved_control:
         return
-    control = sanitize_state_dictionary(saved_control, main_window.control)
+    control = sanitize_state_dictionary(
+        upgrade_legacy_control(saved_control), main_window.control
+    )
     for control_name, control_value in control.items():
         main_window.control[control_name] = control_value
     common_widget_actions.set_control_widgets_values(main_window)
@@ -679,7 +694,7 @@ def load_saved_workspace(
 
             # Load control (settings)
             control = sanitize_state_dictionary(
-                data.get("control", {}), main_window.control
+                upgrade_legacy_control(data.get("control", {})), main_window.control
             )
 
             for control_name, control_value in control.items():
