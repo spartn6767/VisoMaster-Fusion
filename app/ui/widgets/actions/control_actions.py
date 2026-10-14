@@ -44,6 +44,30 @@ def handle_alignments_cache_toggle(main_window: "MainWindow", value: bool) -> No
     common_widget_actions.refresh_frame(main_window)
 
 
+def clear_alignments_cache(main_window: "MainWindow", *args) -> None:
+    """Discards all stored alignments after confirmation so they are re-detected."""
+    frame_count = len(main_window.alignments)
+    if frame_count == 0:
+        common_widget_actions.create_and_show_toast_message(
+            main_window, "Clear Alignments", "No stored alignments to clear."
+        )
+        return
+    reply = QtWidgets.QMessageBox.question(
+        main_window,
+        "Clear Alignments",
+        f"Discard stored alignments for {frame_count} frames?\n\n"
+        "Faces will be re-detected as frames are played, rendered or seeked.",
+        QtWidgets.QMessageBox.StandardButton.Yes
+        | QtWidgets.QMessageBox.StandardButton.No,
+        QtWidgets.QMessageBox.StandardButton.No,
+    )
+    if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+        return
+    main_window.alignments.clear()
+    print(f"[INFO] Cleared alignments for {frame_count} frames.")
+    common_widget_actions.refresh_frame(main_window)
+
+
 def clear_gpu_memory(main_window: "MainWindow"):
     """
     Centralized VRAM management. Stops processing, unloads all backend models,

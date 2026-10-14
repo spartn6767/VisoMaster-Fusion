@@ -267,3 +267,30 @@ def test_workspace_sidecar_helpers_round_trip(tmp_path):
     load_alignments_sidecar(target, {"alignments": header}, json_path)
     assert target.alignments.frames() == [4]
     load_alignments_sidecar(SimpleNamespace(), {"alignments": header}, json_path)
+
+
+@pytest.mark.parametrize("confirm, expect_cleared", [(True, True), (False, False)])
+def test_clear_alignments_cache_button(monkeypatch, confirm, expect_cleared):
+    from PySide6 import QtWidgets
+
+    from app.ui.widgets.actions import control_actions
+
+    buttons = QtWidgets.QMessageBox.StandardButton
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "question",
+        lambda *a, **k: buttons.Yes if confirm else buttons.No,
+    )
+    refreshed: list = []
+    monkeypatch.setattr(
+        control_actions.common_widget_actions,
+        "refresh_frame",
+        lambda mw, *a, **k: refreshed.append(mw),
+    )
+
+    main_window = SimpleNamespace(alignments=AlignmentStore())
+    main_window.alignments.put(1, [_face()], W, H, "sig")
+    control_actions.clear_alignments_cache(main_window, False)
+
+    assert (len(main_window.alignments) == 0) is expect_cleared
+    assert bool(refreshed) is expect_cleared

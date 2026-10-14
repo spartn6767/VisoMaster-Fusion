@@ -605,6 +605,12 @@ SETTINGS_LAYOUT_DATA: Any = {
             "help": "Store every frame's detected faces (bbox, landmarks, embedding) and reuse them on seek, preview and render instead of re-detecting. Saved alongside the workspace/job as a '.alignments.npz' file. Entries are re-detected automatically when detector, landmark, recognition, smoothing or tracking settings or the target faces change. Turning this off clears the stored alignments.",
             "exec_function": control_actions.handle_alignments_cache_toggle,
             "exec_function_args": [],
+            "action_button": {
+                "label": "Clear",
+                "fixed_width": 68,
+                "help": "Discard all stored alignments and start over. Frames are re-detected as they are played, rendered or seeked. The '.alignments.npz' file is updated on the next workspace/job save.",
+                "exec_function": control_actions.clear_alignments_cache,
+            },
         },
     },
     "Face Tracking": {
