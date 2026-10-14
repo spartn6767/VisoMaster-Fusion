@@ -408,7 +408,7 @@ class InputFacesLoaderWorker(qtc.QThread):
         if folder_name and isinstance(folder_name, str):
             image_files = misc_helpers.get_image_files(
                 folder_name,
-                bool(control.get("InputFacesFolderRecursiveToggle", True)),
+                bool(control.get("InputFacesFolderRecursiveToggle", False)),
             )
             image_files.sort()  # Safe to sort here, IDs are generated fresh
             for path in image_files:
