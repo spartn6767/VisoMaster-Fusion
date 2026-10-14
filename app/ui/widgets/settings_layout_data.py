@@ -774,7 +774,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         "InputFacesFolderRecursiveToggle": {
             "level": 1,
             "label": "Input Faces Include Subfolders",
-            "default": False,
+            "default": True,
             "help": "Include all files from Subfolders when choosing Input Faces Folder",
         },
         "ImageFormatToggle": {

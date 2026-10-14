@@ -1165,6 +1165,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         If no workspace is found (first launch or deleted config), prompts the user
         to select an Execution Provider to prevent unwanted TensorRT engine generation.
         """
+        # Job Manager starts hidden; a fully loaded workspace restores its saved state
+        self._set_panel_visibility("jobs", False)
         # Show the load workspace dialog if the file exists
         last_workspace_path = self.last_workspace_path
         if last_workspace_path.is_file():
