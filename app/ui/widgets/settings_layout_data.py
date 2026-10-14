@@ -838,7 +838,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         "ShowSeekBarThumbnailsToggle": {
             "level": 1,
             "label": "Show Seek Bar Thumbnails",
-            "default": True,
+            "default": False,
             "help": "Show and generate thumbnails on the video seek bar. Disable to hide them and stop generation.",
             "exec_function": control_actions.handle_seek_bar_thumbnails_toggle,
             "exec_function_args": [],

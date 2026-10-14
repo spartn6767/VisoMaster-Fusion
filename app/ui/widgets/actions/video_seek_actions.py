@@ -491,7 +491,7 @@ class ThumbnailTrackWidget(QtWidgets.QWidget):
             return
 
         # Respect the setting — stop generation and hide when disabled
-        if not self.main_window.control.get("ShowSeekBarThumbnailsToggle", True):
+        if not self.main_window.control.get("ShowSeekBarThumbnailsToggle", False):
             self.thumbnail_cache.clear()
             self.expected_intervals.clear()
             self.setVisible(False)
