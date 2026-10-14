@@ -216,6 +216,38 @@ def move_face(
     return updated
 
 
+def resize_face(
+    main_window: "MainWindow",
+    frame_number: int,
+    face_index: int,
+    new_bbox: Sequence[float],
+) -> bool:
+    """Sets a new bbox (normalised), stretching the landmarks with it, and pins it."""
+    faces = _frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return False
+    face = faces[face_index]
+    old = np.asarray(face["bbox"], dtype=np.float32)
+    new = np.asarray(new_bbox, dtype=np.float32).reshape(4)
+    old_size = np.maximum(old[2:] - old[:2], 1e-6)
+    scale = (new[2:] - new[:2]) / old_size
+    updates: dict[str, Any] = {
+        "bbox": new,
+        "embedding": None,
+        "source": SOURCE_MANUAL,
+    }
+    for key in ("kps_5", "kps_all", "kps_203"):
+        if face.get(key) is not None:
+            pts = np.asarray(face[key], dtype=np.float32)
+            updates[key] = new[:2] + (pts - old[:2]) * scale
+    updated = main_window.alignments.update_face(
+        frame_number, face_index, 1, 1, **updates
+    )
+    if updated:
+        _refresh(main_window)
+    return updated
+
+
 def delete_face(main_window: "MainWindow", frame_number: int, face_index: int) -> None:
     if main_window.alignments.remove_face(frame_number, face_index):
         _refresh(main_window)
@@ -286,16 +318,90 @@ class _LandmarkHandle(QtWidgets.QGraphicsEllipseItem):
         self._press_pos = None
 
 
-class _FaceBox(QtWidgets.QGraphicsRectItem):
-    """Draggable face bbox; its landmark handles are children and move with it."""
+class _CornerHandle(QtWidgets.QGraphicsRectItem):
+    """Square on a box corner; dragging it resizes the parent ``_FaceBox``."""
 
-    def __init__(self, rect: QtCore.QRectF, on_moved: Callable[[QtCore.QPointF], Any]):
+    def __init__(self, box: "_FaceBox", corner: int):
+        r = _HANDLE_RADIUS
+        super().__init__(-r, -r, 2 * r, 2 * r, box)
+        self._box = box
+        self.corner = corner
+        self._dragging = False
+        self.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+        pen = QtGui.QPen(QtGui.QColor(0, 0, 0))
+        pen.setCosmetic(True)
+        self.setPen(pen)
+        flags = QtWidgets.QGraphicsItem.GraphicsItemFlag
+        self.setFlag(flags.ItemIsMovable, True)
+        self.setFlag(flags.ItemIgnoresTransformations, True)
+        self.setZValue(_OVERLAY_Z + 2)
+        cursor = (
+            QtCore.Qt.CursorShape.SizeFDiagCursor
+            if corner in (0, 2)
+            else QtCore.Qt.CursorShape.SizeBDiagCursor
+        )
+        self.setCursor(cursor)
+
+    def mousePressEvent(self, event):
+        self._dragging = True
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        super().mouseMoveEvent(event)
+        self._box.drag_corner(self)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if self._dragging:
+            self._dragging = False
+            self._box.finish_resize()
+
+
+class _FaceBox(QtWidgets.QGraphicsRectItem):
+    """Draggable face bbox; landmark and corner handles are children and move with it."""
+
+    def __init__(
+        self,
+        rect: QtCore.QRectF,
+        on_moved: Callable[[QtCore.QPointF], Any],
+        on_resized: Optional[Callable[[QtCore.QRectF], Any]] = None,
+    ):
         super().__init__(rect)
         self._on_moved = on_moved
+        self._on_resized = on_resized
+        self._start_rect = QtCore.QRectF(rect)
+        self._corners = [_CornerHandle(self, i) for i in range(4)]
+        self._place_corners()
         self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton)
         self.setZValue(_OVERLAY_Z)
         self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+
+    def _corner_points(self, rect: QtCore.QRectF) -> list[QtCore.QPointF]:
+        return [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
+
+    def _place_corners(self, skip: Optional[_CornerHandle] = None) -> None:
+        for handle, point in zip(self._corners, self._corner_points(self.rect())):
+            if handle is not skip:
+                handle.setPos(point)
+
+    def drag_corner(self, handle: _CornerHandle) -> None:
+        opposite = self._corner_points(self._start_rect)[(handle.corner + 2) % 4]
+        self.setRect(QtCore.QRectF(opposite, handle.pos()).normalized())
+        self._place_corners(skip=handle)
+
+    def finish_resize(self) -> None:
+        rect = self.rect()
+        if (
+            rect.width() < _MIN_BBOX_PIXELS
+            or rect.height() < _MIN_BBOX_PIXELS
+            or self._on_resized is None
+        ):
+            self.setRect(self._start_rect)
+            self._place_corners()
+            return
+        if rect != self._start_rect:
+            self._on_resized(rect.translated(self.pos()))
 
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
@@ -319,6 +425,22 @@ def _commit_box(
         offset.x() / rect.width(),
         offset.y() / rect.height(),
     )
+
+
+def _commit_resize(
+    main_window: "MainWindow",
+    frame_number: int,
+    face_index: int,
+    scene_rect: QtCore.QRectF,
+) -> None:
+    rect = _pixmap_rect(main_window)
+    if rect is None:
+        return
+    bbox = bbox_from_corners(
+        _to_normalized(rect, scene_rect.left(), scene_rect.top()),
+        _to_normalized(rect, scene_rect.right(), scene_rect.bottom()),
+    )
+    resize_face(main_window, frame_number, face_index, np.clip(bbox, 0.0, 1.0))
 
 
 def _commit_handle(
@@ -373,6 +495,7 @@ def refresh_alignment_overlay(main_window: "MainWindow") -> None:
                 (y2 - y1) * rect.height(),
             ),
             partial(_commit_box, main_window, frame_number, face_index),
+            partial(_commit_resize, main_window, frame_number, face_index),
         )
         box.setPen(pen)
         scene.addItem(box)
@@ -400,7 +523,7 @@ def handle_mouse_press(
         return False
     if not is_alignment_edit_active(main_window):
         return False
-    if isinstance(view.itemAt(event.pos()), (_LandmarkHandle, _FaceBox)):
+    if isinstance(view.itemAt(event.pos()), (_LandmarkHandle, _CornerHandle, _FaceBox)):
         return False
     rect = _pixmap_rect(main_window)
     start = view.mapToScene(event.pos())
