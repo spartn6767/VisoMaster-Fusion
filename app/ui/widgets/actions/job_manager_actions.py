@@ -268,6 +268,7 @@ def _clear_main_window_state(main_window: "MainWindow"):
         main_window
     )  # Clear markers from slider and data
     main_window.job_marker_pairs.clear()  # Clear job segments
+    main_window.alignments.clear()
 
     if hasattr(main_window, "selected_video_button"):
         btn = main_window.selected_video_button
@@ -581,6 +582,8 @@ def _load_job_markers(main_window: "MainWindow", data: dict):
             marker_data.get("control", {}),
             int(marker_position),
         )
+
+    save_load_actions.load_alignments_sidecar(main_window, data)
 
     loaded_issue_frames_by_face = data.get("issue_frames_by_face")
     if loaded_issue_frames_by_face is not None:
@@ -1338,6 +1341,12 @@ def save_job_workspace(
         output_file_name if not use_job_name_for_output else None
     )
 
+    alignments_header = save_load_actions.save_alignments_sidecar(
+        main_window, data_filename
+    )
+    if alignments_header:
+        workspace_data["alignments"] = alignments_header
+
     # Write data to JSON file
     with open(data_filename, "w") as data_file:
         json.dump(workspace_data, data_file, indent=4)
@@ -1786,6 +1795,9 @@ def handle_batch_completion(main_window: "MainWindow"):
         print("[INFO] Found workspace snapshot. Restoring...")
         try:
             _restore_workspace_from_snapshot(main_window, snapshot)
+            alignments_snapshot = main_window.alignments_snapshot_before_batch
+            if alignments_snapshot is not None:
+                main_window.alignments.restore(alignments_snapshot)
         except Exception as e:
             print(f"[ERROR] Critical error during workspace restore: {e}")
             traceback.print_exc()
@@ -1797,6 +1809,7 @@ def handle_batch_completion(main_window: "MainWindow"):
             )
         finally:
             main_window.workspace_snapshot_before_batch = None  # Clear snapshot
+            main_window.alignments_snapshot_before_batch = None
             print("[INFO] Workspace snapshot cleared.")
     else:
         print("[WARN] No workspace snapshot found. UI will remain in its last state.")
@@ -1918,6 +1931,7 @@ def start_job_processor(main_window: "MainWindow", jobs_to_process: list[str] | 
     # Save the current workspace state before starting the batch
     print("[INFO] Saving workspace snapshot before starting job processor...")
     main_window.workspace_snapshot_before_batch = _serialize_job_data(main_window)
+    main_window.alignments_snapshot_before_batch = main_window.alignments.snapshot()
 
     main_window.job_processor = JobProcessor(
         main_window, jobs_to_process=jobs_to_process

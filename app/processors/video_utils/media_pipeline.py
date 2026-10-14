@@ -21,6 +21,12 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from app.helpers.typing_helper import ControlTypes, FacesParametersTypes
 import app.helpers.miscellaneous as misc_helpers
+from app.processors.video_utils.alignment_store import (
+    SEQUENTIAL_SOURCES,
+    alignments_cache_enabled,
+    detector_signature,
+    faces_to_detection_arrays,
+)
 from app.ui.widgets.actions import (
     graphics_view_actions,
     video_control_actions,
@@ -645,6 +651,7 @@ class MediaPipeline(QObject):
             torch.cuda.set_stream(detector_stream)
 
         last_marker_data = None
+        last_frame_was_cache_hit = False
         self.ui_state_is_dirty = True
         current_frame_shape: Optional[Tuple[int, ...]] = None
 
@@ -784,13 +791,31 @@ class MediaPipeline(QObject):
                 ):
                     self.vp._video_had_targets = True
                     is_master_edit_active = self.main_window.editFacesButton.isChecked()
-                    bboxes, kpss_5, kpss, kpss_203 = self.vp.sequential_detector.run(
-                        frame_rgb=frame_rgb,
-                        local_control_for_worker=local_control_for_worker,
-                        local_params_for_worker=local_params_for_worker,
-                        is_master_edit_active=is_master_edit_active,
-                        frame_number=frame_num_to_process,
+                    cached_faces = self._lookup_cached_alignments(
+                        frame_num_to_process, frame_rgb, local_control_for_worker
                     )
+                    if cached_faces is not None:
+                        bboxes, kpss_5, kpss, kpss_203 = faces_to_detection_arrays(
+                            cached_faces
+                        )
+                        self.vp.sequential_detector.last_detected_faces = [
+                            {"bbox": b, "score": 1.0} for b in bboxes
+                        ]
+                        last_frame_was_cache_hit = True
+                    else:
+                        # Temporal smoothing/tracking state is stale after cached frames.
+                        if last_frame_was_cache_hit:
+                            self.vp.sequential_detector.reset_state()
+                            last_frame_was_cache_hit = False
+                        bboxes, kpss_5, kpss, kpss_203 = (
+                            self.vp.sequential_detector.run(
+                                frame_rgb=frame_rgb,
+                                local_control_for_worker=local_control_for_worker,
+                                local_params_for_worker=local_params_for_worker,
+                                is_master_edit_active=is_master_edit_active,
+                                frame_number=frame_num_to_process,
+                            )
+                        )
                 else:
                     bboxes = numpy.empty((0, 4), dtype=numpy.float32)
                     kpss_5 = numpy.empty((0, 5, 2), dtype=numpy.float32)
@@ -855,6 +880,24 @@ class MediaPipeline(QObject):
             del detector_stream
 
         print("[INFO] Detector Thread finished.")
+
+    def _lookup_cached_alignments(
+        self, frame_number: int, frame_rgb: numpy.ndarray, control: ControlTypes
+    ) -> Optional[list[dict[str, Any]]]:
+        """Returns cached detections for a frame, or None if it must be detected."""
+        store = getattr(self.main_window, "alignments", None)
+        if (
+            store is None
+            or self.vp.file_type != "video"
+            or not alignments_cache_enabled(cast(dict, control))
+            or not store.matches_media(self.vp.media_path)
+        ):
+            return None
+        frame_h, frame_w = frame_rgb.shape[:2]
+        signature = detector_signature(
+            cast(dict, control), list(self.main_window.target_faces.keys())
+        )
+        return store.get(frame_number, frame_w, frame_h, signature, SEQUENTIAL_SOURCES)
 
     def _feed_webcam(self) -> None:
         """Continuous extraction loop for Live Webcam hardware."""

@@ -36,6 +36,14 @@ def handle_face_detector_tracking_reset(main_window: "MainWindow", value: bool) 
     common_widget_actions.refresh_frame(main_window)
 
 
+def handle_alignments_cache_toggle(main_window: "MainWindow", value: bool) -> None:
+    """Disabling the alignments cache also discards what it stored."""
+    if not value:
+        main_window.alignments.clear()
+        print("[INFO] Alignments cache cleared.")
+    common_widget_actions.refresh_frame(main_window)
+
+
 def clear_gpu_memory(main_window: "MainWindow"):
     """
     Centralized VRAM management. Stops processing, unloads all backend models,

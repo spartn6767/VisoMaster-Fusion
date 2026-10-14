@@ -24,6 +24,7 @@ from app.ui.widgets.actions import filter_actions
 from app.ui.widgets import ui_workers
 from app.helpers.typing_helper import ParametersTypes, MarkerTypes
 import app.helpers.miscellaneous as misc_helpers
+from app.processors.video_utils.alignment_store import sidecar_path_for
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
@@ -141,6 +142,31 @@ def _save_hashed_kv_payload(
     except Exception as e:
         print(f"[ERROR] Failed to hash and save K/V map payload: {e}")
         return None
+
+
+def save_alignments_sidecar(
+    main_window: "MainWindow", json_path: Union[str, Path]
+) -> Optional[dict]:
+    """Writes the alignments next to a workspace/job JSON; returns its header."""
+    store = getattr(main_window, "alignments", None)
+    if store is None or len(store) == 0:
+        return None
+    try:
+        return store.save(sidecar_path_for(str(json_path)))
+    except Exception as e:
+        print(f"[WARN] Failed to save alignments for {json_path}: {e}")
+        return None
+
+
+def load_alignments_sidecar(
+    main_window: "MainWindow", data: dict, json_path: Union[str, Path, None] = None
+) -> None:
+    header = data.get("alignments")
+    store = getattr(main_window, "alignments", None)
+    if not header or store is None:
+        return
+    base_dir = os.path.dirname(os.path.abspath(str(json_path))) if json_path else None
+    store.load_from_header(header, base_dir)
 
 
 def sanitize_markers_dictionary(
@@ -932,6 +958,11 @@ def load_saved_workspace(
                     marker_data["control"],
                     int(marker_position),
                 )
+            load_alignments_sidecar(
+                main_window,
+                data,
+                data_filename if isinstance(data_filename, str) else None,
+            )
             loaded_issue_frames_by_face = data.get("issue_frames_by_face")
             if loaded_issue_frames_by_face is not None:
                 video_control_actions.set_issue_frames_by_face(
@@ -1480,6 +1511,13 @@ def save_current_workspace(
     }
 
     if data_filename:
+        alignments_header = (
+            save_alignments_sidecar(main_window, data_filename)
+            if isinstance(data_filename, (str, Path))
+            else None
+        )
+        if alignments_header:
+            data["alignments"] = alignments_header
         try:
             with open(data_filename, "w", encoding="utf-8") as data_file:
                 data_as_json = json.dumps(
@@ -1707,6 +1745,10 @@ def save_current_job(main_window: "MainWindow"):
                 target_face.assigned_merged_embeddings.keys()
             ),
         }
+
+    alignments_header = save_alignments_sidecar(main_window, save_path)
+    if alignments_header:
+        job_data["alignments"] = alignments_header
 
     # Save the job file
     try:

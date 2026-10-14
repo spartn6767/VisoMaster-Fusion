@@ -23,6 +23,7 @@ from app.ui.widgets.actions import preset_actions
 from app.ui.widgets.advanced_embedding_editor import EmbeddingGUI
 import app.ui.widgets.actions.control_actions as control_actions
 from app.processors.video_processor import VideoProcessor
+from app.processors.video_utils.alignment_store import AlignmentStore
 from app.processors.models_processor import ModelsProcessor
 from app.processors.utils import platform_support
 from app.processors.workers.function_worker import FunctionWorker
@@ -154,6 +155,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.current_widget_parameters: ParametersTypes = {}
 
         self.markers: MarkerTypes = {}  # Video Markers (Contains parameters for each face)
+        self.alignments = (
+            AlignmentStore()
+        )  # Per-frame face detections, reused across seeks/renders
+        self.alignments_snapshot_before_batch: Optional[AlignmentStore] = None
         self.issue_frames_by_face: dict[str, set[int]] = {}
         self.issue_frames: set[int] = set()
         self.dropped_frames: set[int] = set()

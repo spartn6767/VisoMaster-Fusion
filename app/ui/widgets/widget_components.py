@@ -304,6 +304,7 @@ class TargetMediaCardButton(CardButton):
             card_actions.uncheck_all_merged_embeddings(main_window)
         # Remove all markers
         video_control_actions.remove_all_markers(main_window)
+        main_window.alignments.bind_media(self.media_path)
 
         main_window.cur_selected_target_face_button = False
 

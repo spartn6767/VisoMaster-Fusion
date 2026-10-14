@@ -8,6 +8,16 @@ from torchvision.transforms import v2
 import kornia.geometry.transform as kgm
 
 from app.processors.models_data import landmark_point_counts
+from app.processors.video_utils.alignment_store import (
+    ALL_SOURCES,
+    SEQUENTIAL_SOURCES,
+    SOURCE_SEQUENTIAL,
+    SOURCE_SINGLE,
+    alignments_cache_enabled,
+    detector_signature,
+    faces_require_203,
+    faces_to_detection_arrays,
+)
 from app.helpers.miscellaneous import (
     ParametersDict,
     draw_bounding_boxes_on_detected_faces,
@@ -147,6 +157,35 @@ class StandardProcessor:
 
         post_rot_h, post_rot_w = img.shape[1], img.shape[2]
 
+        # --- ALIGNMENTS CACHE ---
+        alignment_store = getattr(self.worker.main_window, "alignments", None)
+        alignment_frame = int(self.worker.frame_number)
+        cache_frame_w, cache_frame_h = img.size(2), img.size(1)
+        use_alignment_cache = (
+            alignment_store is not None
+            and self.worker.video_processor.file_type == "video"
+            and len(target_faces_snapshot) > 0
+            and alignments_cache_enabled(control)
+            and alignment_store.matches_media(self.worker.video_processor.media_path)
+        )
+        alignment_signature = (
+            detector_signature(control, target_faces_snapshot.keys())
+            if use_alignment_cache
+            else None
+        )
+        cached_alignment_faces = (
+            alignment_store.get(
+                alignment_frame,
+                cache_frame_w,
+                cache_frame_h,
+                alignment_signature,
+                ALL_SOURCES if self.worker.is_single_frame else SEQUENTIAL_SOURCES,
+            )
+            if use_alignment_cache and alignment_store is not None
+            else None
+        )
+        pending_alignment_faces: list[dict] | None = None
+
         # --- DETECTION PHASE ---
         # The workers are now "Stateless Render Engines". They no longer track time or state.
         # They consume perfectly sequenced and EMA-smoothed detections from the Feeder thread.
@@ -154,7 +193,12 @@ class StandardProcessor:
         # FW-ARCH-FIX: Flag to know if faces were vetted by the Sequential Detector
         is_sequentially_tracked = not self.worker.is_single_frame
 
-        if is_sequentially_tracked:
+        if cached_alignment_faces is not None:
+            # 0. Cache Path: reuse the stored alignments for this frame
+            bboxes, kpss_5, kpss, kpss_203 = faces_to_detection_arrays(
+                cached_alignment_faces
+            )
+        elif is_sequentially_tracked:
             # 1. Primary Path (Video/Webcam): Use the sequentially precomputed detections
             bboxes = self.worker.precomputed_bboxes
             kpss_5 = self.worker.precomputed_kpss_5
@@ -352,18 +396,26 @@ class StandardProcessor:
 
             for i in range(len(kpss_5)):
                 _bbox_i = safe_bboxes[i]
-                if not is_detected_face_eligible_for_matching(
+                cached_face = (
+                    cached_alignment_faces[i]
+                    if cached_alignment_faces is not None
+                    else None
+                )
+                if cached_face is None and not is_detected_face_eligible_for_matching(
                     kpss_5[i], _bbox_i, self.worker._MIN_FACE_PIXELS
                 ):
                     continue
 
-                similarity_type = str("Auto")
-                face_emb, _ = self.worker.function_worker.run_recognize_direct(
-                    img,
-                    kpss_5[i],
-                    similarity_type,
-                    control["RecognitionModelSelection"],
-                )
+                if cached_face is not None and cached_face["embedding"] is not None:
+                    face_emb = cached_face["embedding"]
+                else:
+                    similarity_type = str("Auto")
+                    face_emb, _ = self.worker.function_worker.run_recognize_direct(
+                        img,
+                        kpss_5[i],
+                        similarity_type,
+                        control["RecognitionModelSelection"],
+                    )
 
                 kps_all_i = _kpss_list[i] if i < len(_kpss_list) else None
                 # Extract the 203 points specifically
@@ -383,6 +435,33 @@ class StandardProcessor:
                         "matched_target": None,
                     }
                 )
+
+        if use_alignment_cache and alignment_store is not None:
+            if cached_alignment_faces is not None:
+                self._complete_cached_alignments(
+                    img,
+                    det_faces_data_for_display,
+                    control,
+                    alignment_frame,
+                    cache_frame_w,
+                    cache_frame_h,
+                    edit_button_is_checked_global,
+                )
+            else:
+                pending_alignment_faces = [
+                    {
+                        "bbox": f["bbox"].copy(),
+                        "kps_5": f["kps_5"].copy(),
+                        "kps_all": None
+                        if f["kps_all"] is None
+                        else np.asarray(f["kps_all"], dtype=np.float32).copy(),
+                        "kps_203": None
+                        if f["kps_203"] is None or not np.any(f["kps_203"])
+                        else np.asarray(f["kps_203"], dtype=np.float32).copy(),
+                        "embedding": f["embedding"],
+                    }
+                    for f in det_faces_data_for_display
+                ]
 
         # Swapping / Editing Loop
         if det_faces_data_for_display:
@@ -700,6 +779,23 @@ class StandardProcessor:
                             )
                             continue
 
+        if pending_alignment_faces is not None and alignment_store is not None:
+            for pending, fface in zip(
+                pending_alignment_faces, det_faces_data_for_display
+            ):
+                matched = fface.get("matched_target")
+                pending["face_id"] = (
+                    str(matched.face_id) if matched is not None else None
+                )
+            alignment_store.put(
+                alignment_frame,
+                pending_alignment_faces,
+                cache_frame_w,
+                cache_frame_h,
+                cast(str, alignment_signature),
+                SOURCE_SINGLE if self.worker.is_single_frame else SOURCE_SEQUENTIAL,
+            )
+
         # Undo Rotation / Scaling
         if control["ManualRotationEnableToggle"]:
             angle = control["ManualRotationAngleSlider"]
@@ -841,6 +937,38 @@ class StandardProcessor:
             )
 
         return processed_tensor_rgb_uint8
+
+    def _complete_cached_alignments(
+        self,
+        img: torch.Tensor,
+        det_faces: list,
+        control: dict,
+        frame_number: int,
+        frame_w: int,
+        frame_h: int,
+        edit_active: bool,
+    ) -> None:
+        """Fills in fields a cached entry lacks (embedding, kps_203) and writes them back."""
+        store = self.worker.main_window.alignments
+        needs_203 = faces_require_203(self.worker.parameters, edit_active)
+        for idx, fface in enumerate(det_faces):
+            updates: dict = {}
+            if needs_203 and fface.get("kps_203") is None:
+                _, lm_203, _ = self.worker.function_worker.run_detect_landmark(
+                    img,
+                    fface["bbox"],
+                    fface["kps_5"],
+                    detect_mode="203",
+                    score=0.5,
+                    use_mean_eyes=control.get("LandmarkMeanEyesToggle", False),
+                    from_points=True,
+                )
+                if len(lm_203) > 0:
+                    fface["kps_203"] = lm_203
+                    updates["kps_203"] = lm_203
+            if updates:
+                updates["embedding"] = fface["embedding"]
+                store.update_face(frame_number, idx, frame_w, frame_h, **updates)
 
     def _resolve_landmarks_to_draw(self, det_faces_data: list, control: dict) -> list:
         """
