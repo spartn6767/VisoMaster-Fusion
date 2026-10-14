@@ -1178,7 +1178,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             elif startup_mode == save_load_actions.STARTUP_ASK:
                 load_dialog = widget_components.LoadLastWorkspaceDialog(self)
                 load_dialog.exec_()
-            # Start Blank: keep the freshly initialised defaults
+            else:
+                # Start Blank: defaults for everything except the execution provider
+                saved_provider = save_load_actions.get_saved_execution_provider(
+                    last_workspace_path
+                )
+                if saved_provider:
+                    self._apply_startup_execution_provider(saved_provider)
         else:
             # First launch or no workspace: Prompt for execution provider
             options = platform_support.available_execution_providers()
@@ -1206,27 +1212,23 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
             if ok and provider:
                 print(f"[INFO] Initial provider selected: {provider}")
-                # 1. Update the control state
-                self.control["ProvidersPrioritySelection"] = provider
-
-                # 2. Update the corresponding UI widget if it has been instantiated
-                provider_widget = self.parameter_widgets.get(
-                    "ProvidersPrioritySelection"
-                )
-                if provider_widget and hasattr(provider_widget, "setCurrentText"):
-                    provider_widget.setCurrentText(provider)
-
-                # 3. Execute the function to apply the provider changes system-wide
-                try:
-                    control_actions.change_execution_provider(self)
-                except Exception as e:
-                    print(
-                        f"[ERROR] Failed to apply execution provider during startup: {e}"
-                    )
+                self._apply_startup_execution_provider(provider)
 
         # Re-populate and set current selection for dynamic widgets like DenoiserUNetModelSelection
         self._populate_denoiser_unet_models()
         self._populate_reference_kv_tensors()
+
+    def _apply_startup_execution_provider(self, provider: str) -> None:
+        if self.control.get("ProvidersPrioritySelection") == provider:
+            return
+        self.control["ProvidersPrioritySelection"] = provider
+        provider_widget = self.parameter_widgets.get("ProvidersPrioritySelection")
+        if provider_widget and hasattr(provider_widget, "setCurrentText"):
+            provider_widget.setCurrentText(provider)
+        try:
+            control_actions.change_execution_provider(self)
+        except Exception as e:
+            print(f"[ERROR] Failed to apply execution provider during startup: {e}")
 
     def register_parameter_section(
         self,

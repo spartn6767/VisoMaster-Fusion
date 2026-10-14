@@ -1463,3 +1463,21 @@ def test_get_startup_workspace_mode_unreadable_file_starts_blank(tmp_path):
     path.write_text("{not json")
 
     assert save_load_actions.get_startup_workspace_mode(path) == "Start Blank"
+
+
+def test_get_saved_execution_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        save_load_actions.platform_support,
+        "available_execution_providers",
+        lambda: ["CUDA", "CPU"],
+    )
+    path = tmp_path / "last_workspace.json"
+
+    path.write_text(json.dumps({"control": {"ProvidersPrioritySelection": "CPU"}}))
+    assert save_load_actions.get_saved_execution_provider(path) == "CPU"
+
+    path.write_text(json.dumps({"control": {"ProvidersPrioritySelection": "TensorRT"}}))
+    assert save_load_actions.get_saved_execution_provider(path) is None
+
+    path.write_text(json.dumps({"control": {}}))
+    assert save_load_actions.get_saved_execution_provider(path) is None

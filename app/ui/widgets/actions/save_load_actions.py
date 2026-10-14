@@ -24,6 +24,7 @@ from app.ui.widgets.actions import filter_actions
 from app.ui.widgets import ui_workers
 from app.helpers.typing_helper import ParametersTypes, MarkerTypes
 import app.helpers.miscellaneous as misc_helpers
+from app.processors.utils import platform_support
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
@@ -619,6 +620,14 @@ def _read_workspace_control(data_filename: str | Path) -> dict:
     except (OSError, json.JSONDecodeError, AttributeError):
         return {}
     return control if isinstance(control, dict) else {}
+
+
+def get_saved_execution_provider(data_filename: str | Path) -> Optional[str]:
+    """Execution provider saved in the workspace, if still available on this system."""
+    provider = _read_workspace_control(data_filename).get("ProvidersPrioritySelection")
+    if provider in platform_support.available_execution_providers():
+        return provider
+    return None
 
 
 def get_startup_workspace_mode(data_filename: str | Path) -> str:
