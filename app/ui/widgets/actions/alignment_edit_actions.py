@@ -191,6 +191,31 @@ def move_landmark(
     return updated
 
 
+def move_face(
+    main_window: "MainWindow", frame_number: int, face_index: int, dx: float, dy: float
+) -> bool:
+    """Translates a face (bbox and landmarks, normalised offsets) and pins it as manual."""
+    faces = _frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return False
+    face = faces[face_index]
+    offset = np.array([dx, dy], dtype=np.float32)
+    moved: dict[str, Any] = {
+        "bbox": np.asarray(face["bbox"], dtype=np.float32) + np.tile(offset, 2),
+        "embedding": None,
+        "source": SOURCE_MANUAL,
+    }
+    for key in ("kps_5", "kps_all", "kps_203"):
+        if face.get(key) is not None:
+            moved[key] = np.asarray(face[key], dtype=np.float32) + offset
+    updated = main_window.alignments.update_face(
+        frame_number, face_index, 1, 1, **moved
+    )
+    if updated:
+        _refresh(main_window)
+    return updated
+
+
 def delete_face(main_window: "MainWindow", frame_number: int, face_index: int) -> None:
     if main_window.alignments.remove_face(frame_number, face_index):
         _refresh(main_window)
@@ -257,8 +282,43 @@ class _LandmarkHandle(QtWidgets.QGraphicsEllipseItem):
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         if self._press_pos is not None and self.pos() != self._press_pos:
-            self._on_moved(self.pos())
+            self._on_moved(self.scenePos())
         self._press_pos = None
+
+
+class _FaceBox(QtWidgets.QGraphicsRectItem):
+    """Draggable face bbox; its landmark handles are children and move with it."""
+
+    def __init__(self, rect: QtCore.QRectF, on_moved: Callable[[QtCore.QPointF], Any]):
+        super().__init__(rect)
+        self._on_moved = on_moved
+        self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton)
+        self.setZValue(_OVERLAY_Z)
+        self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if not self.pos().isNull():
+            self._on_moved(self.pos())
+
+
+def _commit_box(
+    main_window: "MainWindow",
+    frame_number: int,
+    face_index: int,
+    offset: QtCore.QPointF,
+) -> None:
+    rect = _pixmap_rect(main_window)
+    if rect is None:
+        return
+    move_face(
+        main_window,
+        frame_number,
+        face_index,
+        offset.x() / rect.width(),
+        offset.y() / rect.height(),
+    )
 
 
 def _commit_handle(
@@ -305,15 +365,16 @@ def refresh_alignment_overlay(main_window: "MainWindow") -> None:
         pen.setCosmetic(True)
         pen.setWidth(2)
         x1, y1, x2, y2 = (float(v) for v in face["bbox"])
-        box = QtWidgets.QGraphicsRectItem(
-            rect.left() + x1 * rect.width(),
-            rect.top() + y1 * rect.height(),
-            (x2 - x1) * rect.width(),
-            (y2 - y1) * rect.height(),
+        box = _FaceBox(
+            QtCore.QRectF(
+                rect.left() + x1 * rect.width(),
+                rect.top() + y1 * rect.height(),
+                (x2 - x1) * rect.width(),
+                (y2 - y1) * rect.height(),
+            ),
+            partial(_commit_box, main_window, frame_number, face_index),
         )
         box.setPen(pen)
-        box.setZValue(_OVERLAY_Z)
-        box.setAcceptedMouseButtons(QtCore.Qt.MouseButton.NoButton)
         scene.addItem(box)
         items.append(box)
         for point_index, (px, py) in enumerate(
@@ -327,8 +388,7 @@ def refresh_alignment_overlay(main_window: "MainWindow") -> None:
             handle.setPos(
                 rect.left() + px * rect.width(), rect.top() + py * rect.height()
             )
-            scene.addItem(handle)
-            items.append(handle)
+            handle.setParentItem(box)
     setattr(main_window, _OVERLAY_ATTR, items)
 
 
@@ -340,7 +400,7 @@ def handle_mouse_press(
         return False
     if not is_alignment_edit_active(main_window):
         return False
-    if isinstance(view.itemAt(event.pos()), _LandmarkHandle):
+    if isinstance(view.itemAt(event.pos()), (_LandmarkHandle, _FaceBox)):
         return False
     rect = _pixmap_rect(main_window)
     start = view.mapToScene(event.pos())

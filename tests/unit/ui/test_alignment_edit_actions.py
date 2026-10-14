@@ -155,3 +155,20 @@ def test_paste_replaces_face_under_cursor(main_window):
 def test_paste_without_copy_does_nothing(main_window):
     assert not aea.paste_face(main_window, 0)
     assert len(main_window.alignments) == 0
+
+
+def test_move_face_translates_bbox_and_landmarks(main_window):
+    store = main_window.alignments
+    face = _face(10, 10, 30, 30)
+    face["kps_203"] = np.full((203, 2), 20, np.float32)
+    store.put(0, [face], 100, 100, "sig")
+
+    assert aea.move_face(main_window, 0, 0, 0.05, -0.02)
+
+    moved = store.get(0, 100, 100, "other")
+    assert moved is not None and moved[0]["source"] == SOURCE_MANUAL
+    np.testing.assert_allclose(moved[0]["bbox"], [15, 8, 35, 28], atol=1e-3)
+    np.testing.assert_allclose(moved[0]["kps_5"][0], [25, 18], atol=1e-3)
+    np.testing.assert_allclose(moved[0]["kps_203"][0], [25, 18], atol=1e-3)
+    assert moved[0]["embedding"] is None
+    assert not aea.move_face(main_window, 0, 3, 0.1, 0.1)
