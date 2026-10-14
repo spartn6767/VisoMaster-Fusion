@@ -39,6 +39,7 @@ _HANDLE_RADIUS = 5.0
 _OVERLAY_Z = 10.0
 _OVERLAY_ATTR = "_alignment_edit_items"
 _RUBBER_BAND_ATTR = "_alignment_rubber_band"
+_CLIPBOARD_ATTR = "alignment_clipboard"
 
 
 def template_kps_for_bbox(bbox: Sequence[float]) -> np.ndarray:
@@ -67,6 +68,23 @@ def face_index_at(faces: Sequence[dict], x: float, y: float) -> Optional[int]:
             if best is None or area < best_area:
                 best, best_area = idx, area
     return best
+
+
+def nearest_face_index(faces: Sequence[dict], x: float, y: float) -> Optional[int]:
+    """Face under (x, y), else the face whose bbox centre is closest."""
+    if not faces:
+        return None
+    hit = face_index_at(faces, x, y)
+    if hit is not None:
+        return hit
+    centres = np.array(
+        [
+            [(f["bbox"][0] + f["bbox"][2]) / 2.0, (f["bbox"][1] + f["bbox"][3]) / 2.0]
+            for f in faces
+        ],
+        dtype=np.float64,
+    )
+    return int(np.argmin(np.sum((centres - (x, y)) ** 2, axis=1)))
 
 
 def current_frame_number(main_window: "MainWindow") -> int:
@@ -176,6 +194,39 @@ def move_landmark(
 def delete_face(main_window: "MainWindow", frame_number: int, face_index: int) -> None:
     if main_window.alignments.remove_face(frame_number, face_index):
         _refresh(main_window)
+
+
+def copy_face(main_window: "MainWindow", frame_number: int, face_index: int) -> bool:
+    """Copies a stored face (normalised coords) to the alignment clipboard."""
+    faces = _frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return False
+    setattr(main_window, _CLIPBOARD_ATTR, faces[face_index])
+    return True
+
+
+def paste_face(
+    main_window: "MainWindow", frame_number: int, replace_index: Optional[int] = None
+) -> bool:
+    """Pastes the copied face as manual, replacing ``replace_index`` if given."""
+    copied = getattr(main_window, _CLIPBOARD_ATTR, None)
+    if copied is None:
+        return False
+    face = {
+        key: value.copy() if isinstance(value, np.ndarray) else value
+        for key, value in copied.items()
+    }
+    face["source"] = SOURCE_MANUAL
+    store = main_window.alignments
+    store.bind_media(main_window.video_processor.media_path)
+    if replace_index is not None and store.update_face(
+        frame_number, replace_index, 1, 1, **face
+    ):
+        _refresh(main_window)
+        return True
+    store.add_face(frame_number, face, 1, 1)
+    _refresh(main_window)
+    return True
 
 
 def redetect_frame(main_window: "MainWindow", frame_number: int) -> None:
@@ -347,9 +398,9 @@ def handle_mouse_release(
 
 def add_context_menu_actions(
     main_window: "MainWindow", menu: QtWidgets.QMenu, scene_pos: QtCore.QPointF
-) -> dict[QtGui.QAction, Callable[[], None]]:
+) -> dict[QtGui.QAction, Callable[[], Any]]:
     """Adds the Edit Alignments entries; returns handlers keyed by action."""
-    handlers: dict[QtGui.QAction, Callable[[], None]] = {}
+    handlers: dict[QtGui.QAction, Callable[[], Any]] = {}
     menu.addSeparator()
     toggle = menu.addAction("Edit Alignments")
     toggle.setCheckable(True)
@@ -360,15 +411,37 @@ def add_context_menu_actions(
     frame_number = current_frame_number(main_window)
     rect = _pixmap_rect(main_window)
     faces = _frame_faces(main_window, frame_number)
-    if rect is not None and faces:
-        face_index = face_index_at(
-            faces, *_to_normalized(rect, scene_pos.x(), scene_pos.y())
+    point = (
+        _to_normalized(rect, scene_pos.x(), scene_pos.y())
+        if rect is not None
+        else (0.5, 0.5)
+    )
+    face_index = face_index_at(faces, *point) if faces else None
+
+    copy_action = menu.addAction("Copy Face")
+    copy_action.setEnabled(face_index is not None)
+    if face_index is not None:
+        handlers[copy_action] = partial(
+            copy_face, main_window, frame_number, face_index
         )
-        if face_index is not None:
-            delete_action = menu.addAction("Delete Face")
-            handlers[delete_action] = partial(
-                delete_face, main_window, frame_number, face_index
-            )
+    for label, other_frame in (
+        ("Copy Previous", frame_number - 1),
+        ("Copy Next", frame_number + 1),
+    ):
+        other_index = nearest_face_index(_frame_faces(main_window, other_frame), *point)
+        action = menu.addAction(label)
+        action.setEnabled(other_index is not None)
+        if other_index is not None:
+            handlers[action] = partial(copy_face, main_window, other_frame, other_index)
+    paste_action = menu.addAction("Paste Face")
+    paste_action.setEnabled(getattr(main_window, _CLIPBOARD_ATTR, None) is not None)
+    handlers[paste_action] = partial(paste_face, main_window, frame_number, face_index)
+
+    if face_index is not None:
+        delete_action = menu.addAction("Delete Face")
+        handlers[delete_action] = partial(
+            delete_face, main_window, frame_number, face_index
+        )
     if frame_number in main_window.alignments:
         redetect_action = menu.addAction("Re-detect Frame")
         handlers[redetect_action] = partial(redetect_frame, main_window, frame_number)

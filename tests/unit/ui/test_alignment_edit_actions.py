@@ -10,8 +10,10 @@ from app.ui.widgets.actions import alignment_edit_actions as aea
 @pytest.fixture
 def main_window(monkeypatch):
     monkeypatch.setattr(aea, "_refresh", lambda mw: None)
+    store = AlignmentStore()
+    store.bind_media("/v.mp4")
     return SimpleNamespace(
-        alignments=AlignmentStore(),
+        alignments=store,
         video_processor=SimpleNamespace(media_path="/v.mp4"),
     )
 
@@ -102,3 +104,54 @@ def test_refine_flag_is_not_persisted(tmp_path):
     faces = loaded.get(0, 100, 100, None)
     assert faces is not None and faces[0]["refine"] is False
     assert faces[0]["source"] == SOURCE_MANUAL
+
+
+def _face(x1, y1, x2, y2, face_id=None):
+    return {
+        "bbox": np.array([x1, y1, x2, y2], np.float32),
+        "kps_5": np.full((5, 2), (x1 + x2) / 2, np.float32),
+        "embedding": np.arange(4, dtype=np.float32),
+        "face_id": face_id,
+    }
+
+
+def test_nearest_face_index_falls_back_to_closest_centre():
+    faces = [{"bbox": [0, 0, 0.1, 0.1]}, {"bbox": [0.8, 0.8, 0.9, 0.9]}]
+    assert aea.nearest_face_index(faces, 0.7, 0.7) == 1
+    assert aea.nearest_face_index(faces, 0.05, 0.05) == 0
+    assert aea.nearest_face_index([], 0.5, 0.5) is None
+
+
+def test_copy_previous_and_paste_adds_manual_face(main_window):
+    store = main_window.alignments
+    store.put(4, [_face(10, 10, 30, 30, "7")], 100, 100, "sig")
+
+    assert aea.copy_face(main_window, 4, 0)
+    assert aea.paste_face(main_window, 5)
+
+    pasted = store.get(5, 100, 100, "other")
+    assert pasted is not None and len(pasted) == 1
+    assert pasted[0]["source"] == SOURCE_MANUAL and pasted[0]["face_id"] == "7"
+    np.testing.assert_allclose(pasted[0]["bbox"], [10, 10, 30, 30], atol=1e-3)
+    np.testing.assert_allclose(pasted[0]["embedding"], np.arange(4))
+    original = store.get(4, 100, 100, "sig")
+    assert original is not None and original[0]["source"] == "sequential"
+
+
+def test_paste_replaces_face_under_cursor(main_window):
+    store = main_window.alignments
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    store.put(2, [_face(50, 50, 70, 70), _face(0, 0, 5, 5)], 100, 100, "sig")
+    aea.copy_face(main_window, 1, 0)
+
+    assert aea.paste_face(main_window, 2, replace_index=0)
+
+    faces = store.get(2, 100, 100, None)
+    assert faces is not None and len(faces) == 2
+    np.testing.assert_allclose(faces[0]["bbox"], [10, 10, 30, 30], atol=1e-3)
+    assert faces[0]["source"] == SOURCE_MANUAL
+
+
+def test_paste_without_copy_does_nothing(main_window):
+    assert not aea.paste_face(main_window, 0)
+    assert len(main_window.alignments) == 0
