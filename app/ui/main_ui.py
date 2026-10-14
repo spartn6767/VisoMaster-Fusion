@@ -1168,16 +1168,18 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # Show the load workspace dialog if the file exists
         last_workspace_path = self.last_workspace_path
         if last_workspace_path.is_file():
-            auto_load_workspace_toggle = (
-                save_load_actions.get_auto_load_workspace_toggle(
-                    self, str(last_workspace_path)
-                )
+            startup_mode = save_load_actions.get_startup_workspace_mode(
+                last_workspace_path
             )
-            if auto_load_workspace_toggle:
+            if startup_mode == save_load_actions.STARTUP_LOAD_LAST:
                 save_load_actions.load_saved_workspace(self, str(last_workspace_path))
-            else:
+            elif startup_mode == save_load_actions.STARTUP_ASK:
                 load_dialog = widget_components.LoadLastWorkspaceDialog(self)
                 load_dialog.exec_()
+            else:
+                save_load_actions.load_workspace_settings_only(
+                    self, last_workspace_path
+                )
         else:
             # First launch or no workspace: Prompt for execution provider
             options = platform_support.available_execution_providers()

@@ -795,11 +795,12 @@ SETTINGS_LAYOUT_DATA: Any = {
             "default": False,
             "help": "Auto Saves last_workspace.json in the project root at end of recording (only the status at end of recording)",
         },
-        "AutoLoadWorkspaceToggle": {
+        "StartupWorkspaceSelection": {
             "level": 1,
-            "label": "Auto Load Last Workspace",
-            "default": False,
-            "help": 'Do not show the "load last workspace" dialog when open then app, always load last workspace.',
+            "label": "On Startup",
+            "options": ["Start Blank", "Load Last Workspace", "Ask"],
+            "default": "Start Blank",
+            "help": "What to do when the app opens.\nStart Blank: open an empty workspace, keeping your settings from last time.\nLoad Last Workspace: reopen media, faces and markers from last time.\nAsk: show the 'load last workspace' dialog.",
         },
         "SliderMouseWheelControlToggle": {
             "level": 1,

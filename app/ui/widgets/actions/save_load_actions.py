@@ -607,24 +607,47 @@ def load_parameters_and_settings(
             common_widget_actions.refresh_frame(main_window)
 
 
-def get_auto_load_workspace_toggle(
-    main_window: "MainWindow", data_filename: str | bool = False
-):
-    if not data_filename:
-        data_filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-            main_window, filter="JSON (*.json)"
-        )
-    # Check if File exists (In cases when filename is passed as function argument instead of from the file picker)
-    if isinstance(data_filename, str) and not Path(data_filename).is_file():
-        data_filename = False
-    if data_filename:
-        with open(data_filename, "r") as data_file:  # pylint: disable=unspecified-encoding
-            try:
-                data = json.load(data_file)
-            except json.JSONDecodeError:
-                return False
-            control = data["control"]
-            return control.get("AutoLoadWorkspaceToggle", False)
+STARTUP_START_BLANK = "Start Blank"
+STARTUP_LOAD_LAST = "Load Last Workspace"
+STARTUP_ASK = "Ask"
+
+
+def _read_workspace_control(data_filename: str | Path) -> dict:
+    try:
+        with open(data_filename, "r", encoding="utf-8") as data_file:
+            control = json.load(data_file).get("control", {})
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return {}
+    return control if isinstance(control, dict) else {}
+
+
+def get_startup_workspace_mode(data_filename: str | Path) -> str:
+    """Startup behaviour saved in the workspace; honours the legacy auto-load toggle."""
+    control = _read_workspace_control(data_filename)
+    mode = control.get("StartupWorkspaceSelection")
+    if mode in (STARTUP_START_BLANK, STARTUP_LOAD_LAST, STARTUP_ASK):
+        return mode
+    if control.get("AutoLoadWorkspaceToggle"):
+        return STARTUP_LOAD_LAST
+    return STARTUP_START_BLANK
+
+
+def load_workspace_settings_only(
+    main_window: "MainWindow", data_filename: str | Path
+) -> None:
+    """Applies the saved settings (control) without loading media, faces or markers."""
+    saved_control = _read_workspace_control(data_filename)
+    if not saved_control:
+        return
+    control = sanitize_state_dictionary(saved_control, main_window.control)
+    for control_name, control_value in control.items():
+        main_window.control[control_name] = control_value
+    common_widget_actions.set_control_widgets_values(main_window)
+    output_folder = control.get("OutputMediaFolder", "")
+    common_widget_actions.create_control(
+        main_window, "OutputMediaFolder", output_folder
+    )
+    main_window.outputFolderLineEdit.setText(output_folder)
 
 
 def load_saved_workspace(
