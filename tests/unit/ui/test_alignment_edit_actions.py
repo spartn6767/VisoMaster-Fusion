@@ -172,3 +172,22 @@ def test_move_face_translates_bbox_and_landmarks(main_window):
     np.testing.assert_allclose(moved[0]["kps_203"][0], [25, 18], atol=1e-3)
     assert moved[0]["embedding"] is None
     assert not aea.move_face(main_window, 0, 3, 0.1, 0.1)
+
+
+def test_resize_face_stretches_landmarks_with_bbox(main_window):
+    store = main_window.alignments
+    face = _face(10, 10, 30, 30)
+    face["kps_5"] = np.array(
+        [[15, 15], [25, 15], [20, 20], [15, 25], [25, 25]], np.float32
+    )
+    store.put(0, [face], 100, 100, "sig")
+
+    assert aea.resize_face(main_window, 0, 0, [0.10, 0.10, 0.50, 0.70])
+
+    resized = store.get(0, 100, 100, "other")
+    assert resized is not None and resized[0]["source"] == SOURCE_MANUAL
+    np.testing.assert_allclose(resized[0]["bbox"], [10, 10, 50, 70], atol=1e-3)
+    np.testing.assert_allclose(resized[0]["kps_5"][0], [20, 25], atol=1e-3)
+    np.testing.assert_allclose(resized[0]["kps_5"][4], [40, 55], atol=1e-3)
+    assert resized[0]["embedding"] is None
+    assert not aea.resize_face(main_window, 0, 2, [0, 0, 1, 1])
