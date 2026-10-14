@@ -189,6 +189,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.fixed_unet_model_name = "RefLDM_UNET_EXTERNAL_KV"
 
         self.loaded_embedding_filename: str = ""
+        # Workspace file that "Save Current Workspace" overwrites without prompting
+        self.current_workspace_path: str = ""
 
         # List of (start_frame, end_frame) tuples for job segments
         # end_frame can be None if a start marker is set but the end is not yet set.
@@ -729,12 +731,18 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.actionOpen_Output_Folder = QtGui.QAction(
             "Open Output Folder", self.menuFile
         )
+        self.actionSave_WorkspaceAs = QtGui.QAction(
+            "Save Workspace As...", self.menuFile
+        )
+        self.actionNew_Workspace = QtGui.QAction("New Workspace", self.menuFile)
 
         self.menuFile.clear()
+        self.menuFile.addAction(self.actionNew_Workspace)
         self.menuFile.addAction(self.actionLoad_SavedWorkspace)
         self.menuFile.addAction(self.actionReset_to_LastWorkspace)
         self.menuFile.addAction(self.actionSave_LastWorkspace)
         self.menuFile.addAction(self.actionSave_CurrentWorkspace)
+        self.menuFile.addAction(self.actionSave_WorkspaceAs)
         self.menuFile.addSeparator()
         self.menuFile.addAction(self.actionOpen_Videos_Folder)
         self.menuFile.addAction(self.actionOpen_Video_Files)
@@ -1162,19 +1170,26 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         If no workspace is found (first launch or deleted config), prompts the user
         to select an Execution Provider to prevent unwanted TensorRT engine generation.
         """
+        # Job Manager starts hidden; a fully loaded workspace restores its saved state
+        self._set_panel_visibility("jobs", False)
         # Show the load workspace dialog if the file exists
         last_workspace_path = self.last_workspace_path
         if last_workspace_path.is_file():
-            auto_load_workspace_toggle = (
-                save_load_actions.get_auto_load_workspace_toggle(
-                    self, str(last_workspace_path)
-                )
+            startup_mode = save_load_actions.get_startup_workspace_mode(
+                last_workspace_path
             )
-            if auto_load_workspace_toggle:
+            if startup_mode == save_load_actions.STARTUP_LOAD_LAST:
                 save_load_actions.load_saved_workspace(self, str(last_workspace_path))
-            else:
+            elif startup_mode == save_load_actions.STARTUP_ASK:
                 load_dialog = widget_components.LoadLastWorkspaceDialog(self)
                 load_dialog.exec_()
+            else:
+                # Start Blank: defaults for everything except the execution provider
+                saved_provider = save_load_actions.get_saved_execution_provider(
+                    last_workspace_path
+                )
+                if saved_provider:
+                    self._apply_startup_execution_provider(saved_provider)
         else:
             # First launch or no workspace: Prompt for execution provider
             options = platform_support.available_execution_providers()
@@ -1202,27 +1217,23 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
             if ok and provider:
                 print(f"[INFO] Initial provider selected: {provider}")
-                # 1. Update the control state
-                self.control["ProvidersPrioritySelection"] = provider
-
-                # 2. Update the corresponding UI widget if it has been instantiated
-                provider_widget = self.parameter_widgets.get(
-                    "ProvidersPrioritySelection"
-                )
-                if provider_widget and hasattr(provider_widget, "setCurrentText"):
-                    provider_widget.setCurrentText(provider)
-
-                # 3. Execute the function to apply the provider changes system-wide
-                try:
-                    control_actions.change_execution_provider(self)
-                except Exception as e:
-                    print(
-                        f"[ERROR] Failed to apply execution provider during startup: {e}"
-                    )
+                self._apply_startup_execution_provider(provider)
 
         # Re-populate and set current selection for dynamic widgets like DenoiserUNetModelSelection
         self._populate_denoiser_unet_models()
         self._populate_reference_kv_tensors()
+
+    def _apply_startup_execution_provider(self, provider: str) -> None:
+        if self.control.get("ProvidersPrioritySelection") == provider:
+            return
+        self.control["ProvidersPrioritySelection"] = provider
+        provider_widget = self.parameter_widgets.get("ProvidersPrioritySelection")
+        if provider_widget and hasattr(provider_widget, "setCurrentText"):
+            provider_widget.setCurrentText(provider)
+        try:
+            control_actions.change_execution_provider(self)
+        except Exception as e:
+            print(f"[ERROR] Failed to apply execution provider during startup: {e}")
 
     def register_parameter_section(
         self,

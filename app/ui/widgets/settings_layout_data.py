@@ -788,7 +788,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         "InputFacesFolderRecursiveToggle": {
             "level": 1,
             "label": "Input Faces Include Subfolders",
-            "default": False,
+            "default": True,
             "help": "Include all files from Subfolders when choosing Input Faces Folder",
         },
         "ImageFormatToggle": {
@@ -809,11 +809,12 @@ SETTINGS_LAYOUT_DATA: Any = {
             "default": False,
             "help": "Auto Saves last_workspace.json in the project root at end of recording (only the status at end of recording)",
         },
-        "AutoLoadWorkspaceToggle": {
+        "StartupWorkspaceSelection": {
             "level": 1,
-            "label": "Auto Load Last Workspace",
-            "default": False,
-            "help": 'Do not show the "load last workspace" dialog when open then app, always load last workspace.',
+            "label": "On Startup",
+            "options": ["Start Blank", "Load Last Workspace", "Ask"],
+            "default": "Start Blank",
+            "help": "What to do when the app opens.\nStart Blank: open an empty workspace with default settings (the execution provider is kept).\nLoad Last Workspace: reopen media, faces and markers from last time.\nAsk: show the 'load last workspace' dialog.",
         },
         "SliderMouseWheelControlToggle": {
             "level": 1,
@@ -851,7 +852,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         "ShowSeekBarThumbnailsToggle": {
             "level": 1,
             "label": "Show Seek Bar Thumbnails",
-            "default": True,
+            "default": False,
             "help": "Show and generate thumbnails on the video seek bar. Disable to hide them and stop generation.",
             "exec_function": control_actions.handle_seek_bar_thumbnails_toggle,
             "exec_function_args": [],

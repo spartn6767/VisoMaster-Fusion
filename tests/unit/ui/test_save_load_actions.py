@@ -1252,3 +1252,232 @@ def test_load_workspace_restores_target_media_filters_without_double_loading_web
     assert filter_calls == ["final-filter"]
     assert webcam_calls == ["final-webcam"]
     assert flushed_batches == ["flush"]
+
+
+def _workspace_window_for_save_path(tmp_path: Path):
+    return _make_workspace_main_window(
+        tmp_path, is_theatre_mode=False, is_full_screen=False, is_maximized=False
+    )
+
+
+def _patch_save_dialog(monkeypatch, return_path: str) -> MagicMock:
+    get_save_file_name = MagicMock(return_value=(return_path, ""))
+    monkeypatch.setattr(
+        save_load_actions.QtWidgets,
+        "QFileDialog",
+        SimpleNamespace(getSaveFileName=get_save_file_name),
+    )
+    return get_save_file_name
+
+
+def test_save_current_workspace_overwrites_current_file_without_dialog(
+    tmp_path, monkeypatch
+):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+    dialog = _patch_save_dialog(monkeypatch, str(tmp_path / "other.json"))
+
+    save_current_workspace(main_window, False)
+
+    dialog.assert_not_called()
+    assert _read_saved_workspace(current)["current_workspace_path"] == str(current)
+    assert not (tmp_path / "other.json").exists()
+
+
+def test_save_current_workspace_prompts_when_no_current_file(tmp_path, monkeypatch):
+    chosen = tmp_path / "new_project.json"
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(tmp_path / "deleted.json")
+    dialog = _patch_save_dialog(monkeypatch, str(chosen))
+
+    save_current_workspace(main_window, False)
+
+    dialog.assert_called_once()
+    assert chosen.is_file()
+    assert main_window.current_workspace_path == str(chosen)
+
+
+def test_save_workspace_as_always_prompts(tmp_path, monkeypatch):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    chosen = tmp_path / "copy.json"
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+    dialog = _patch_save_dialog(monkeypatch, str(chosen))
+
+    save_current_workspace(main_window, False, save_as=True)
+
+    dialog.assert_called_once()
+    assert current.read_text() == "{}"
+    assert main_window.current_workspace_path == str(chosen)
+
+
+def test_save_workspace_as_cancel_keeps_current_file(tmp_path, monkeypatch):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+    _patch_save_dialog(monkeypatch, "")
+
+    save_current_workspace(main_window, False, save_as=True)
+
+    assert current.read_text() == "{}"
+    assert main_window.current_workspace_path == str(current)
+
+
+def test_last_workspace_autosave_remembers_current_file(tmp_path):
+    current = tmp_path / "project.json"
+    current.write_text("{}")
+    last = tmp_path / "last_workspace.json"
+    main_window = _workspace_window_for_save_path(tmp_path)
+    main_window.current_workspace_path = str(current)
+
+    save_current_workspace(main_window, str(last))
+
+    assert _read_saved_workspace(last)["current_workspace_path"] == str(current)
+    assert main_window.current_workspace_path == str(current)
+
+
+@pytest.mark.parametrize(
+    "loaded_name, remembered_exists, expected",
+    [
+        ("project.json", False, "loaded"),
+        ("last_workspace.json", True, "remembered"),
+        ("last_workspace.json", False, ""),
+    ],
+)
+def test_restore_current_workspace_path(
+    tmp_path, loaded_name, remembered_exists, expected
+):
+    loaded = tmp_path / loaded_name
+    remembered = tmp_path / "remembered.json"
+    if remembered_exists:
+        remembered.write_text("{}")
+    main_window = SimpleNamespace(current_workspace_path="stale")
+
+    save_load_actions._restore_current_workspace_path(
+        main_window, str(loaded), {"current_workspace_path": str(remembered)}
+    )
+
+    assert (
+        main_window.current_workspace_path
+        == {
+            "loaded": str(loaded),
+            "remembered": str(remembered),
+            "": "",
+        }[expected]
+    )
+
+
+def _patch_new_workspace_deps(monkeypatch, confirm: bool) -> SimpleNamespace:
+    import app.ui.widgets.actions as actions_pkg
+
+    monkeypatch.setattr(
+        save_load_actions.QtWidgets,
+        "QMessageBox",
+        SimpleNamespace(Yes=1, No=0, question=MagicMock(return_value=int(confirm))),
+    )
+    monkeypatch.setattr(
+        save_load_actions.video_control_actions,
+        "block_if_issue_scan_active",
+        lambda *a, **k: False,
+    )
+    for name in (
+        "set_issue_frames_by_face",
+        "set_dropped_frames",
+        "reset_media_buttons",
+    ):
+        monkeypatch.setattr(save_load_actions.video_control_actions, name, MagicMock())
+    monkeypatch.setattr(
+        save_load_actions.common_widget_actions,
+        "create_and_show_toast_message",
+        MagicMock(),
+    )
+    fake_job_manager = SimpleNamespace(_clear_main_window_state=MagicMock())
+    monkeypatch.setitem(
+        sys.modules, "app.ui.widgets.actions.job_manager_actions", fake_job_manager
+    )
+    monkeypatch.setattr(
+        actions_pkg, "job_manager_actions", fake_job_manager, raising=False
+    )
+    return fake_job_manager
+
+
+def _new_workspace_window(tmp_path: Path) -> SimpleNamespace:
+    selected = SimpleNamespace(deselect_currently_selected_video=MagicMock())
+    return SimpleNamespace(
+        video_processor=SimpleNamespace(stop_processing=MagicMock()),
+        selected_video_button=selected,
+        loaded_embedding_filename="emb.json",
+        current_workspace_path=str(tmp_path / "project.json"),
+    )
+
+
+def test_new_workspace_clears_state_and_forgets_current_file(tmp_path, monkeypatch):
+    fake_job_manager = _patch_new_workspace_deps(monkeypatch, confirm=True)
+    main_window = _new_workspace_window(tmp_path)
+    selected = main_window.selected_video_button
+
+    save_load_actions.new_workspace(main_window, False)
+
+    selected.deselect_currently_selected_video.assert_called_once_with(main_window)
+    fake_job_manager._clear_main_window_state.assert_called_once_with(main_window)
+    assert main_window.current_workspace_path == ""
+    assert main_window.loaded_embedding_filename == ""
+
+
+def test_new_workspace_cancel_keeps_state(tmp_path, monkeypatch):
+    fake_job_manager = _patch_new_workspace_deps(monkeypatch, confirm=False)
+    main_window = _new_workspace_window(tmp_path)
+
+    save_load_actions.new_workspace(main_window, False)
+
+    fake_job_manager._clear_main_window_state.assert_not_called()
+    main_window.video_processor.stop_processing.assert_not_called()
+    assert main_window.current_workspace_path == str(tmp_path / "project.json")
+
+
+@pytest.mark.parametrize(
+    "control, expected",
+    [
+        ({"StartupWorkspaceSelection": "Ask"}, "Ask"),
+        ({"StartupWorkspaceSelection": "Load Last Workspace"}, "Load Last Workspace"),
+        ({"StartupWorkspaceSelection": "Start Blank"}, "Start Blank"),
+        ({"AutoLoadWorkspaceToggle": True}, "Load Last Workspace"),
+        ({"AutoLoadWorkspaceToggle": False}, "Start Blank"),
+        ({}, "Start Blank"),
+        ({"StartupWorkspaceSelection": "bogus"}, "Start Blank"),
+    ],
+)
+def test_get_startup_workspace_mode(tmp_path, control, expected):
+    path = tmp_path / "last_workspace.json"
+    path.write_text(json.dumps({"control": control}))
+
+    assert save_load_actions.get_startup_workspace_mode(path) == expected
+
+
+def test_get_startup_workspace_mode_unreadable_file_starts_blank(tmp_path):
+    path = tmp_path / "last_workspace.json"
+    path.write_text("{not json")
+
+    assert save_load_actions.get_startup_workspace_mode(path) == "Start Blank"
+
+
+def test_get_saved_execution_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        save_load_actions.platform_support,
+        "available_execution_providers",
+        lambda: ["CUDA", "CPU"],
+    )
+    path = tmp_path / "last_workspace.json"
+
+    path.write_text(json.dumps({"control": {"ProvidersPrioritySelection": "CPU"}}))
+    assert save_load_actions.get_saved_execution_provider(path) == "CPU"
+
+    path.write_text(json.dumps({"control": {"ProvidersPrioritySelection": "TensorRT"}}))
+    assert save_load_actions.get_saved_execution_provider(path) is None
+
+    path.write_text(json.dumps({"control": {}}))
+    assert save_load_actions.get_saved_execution_provider(path) is None

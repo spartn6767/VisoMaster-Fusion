@@ -25,6 +25,7 @@ from app.ui.widgets import ui_workers
 from app.helpers.typing_helper import ParametersTypes, MarkerTypes
 import app.helpers.miscellaneous as misc_helpers
 from app.processors.video_utils.alignment_store import sidecar_path_for
+from app.processors.utils import platform_support
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
@@ -633,24 +634,37 @@ def load_parameters_and_settings(
             common_widget_actions.refresh_frame(main_window)
 
 
-def get_auto_load_workspace_toggle(
-    main_window: "MainWindow", data_filename: str | bool = False
-):
-    if not data_filename:
-        data_filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-            main_window, filter="JSON (*.json)"
-        )
-    # Check if File exists (In cases when filename is passed as function argument instead of from the file picker)
-    if isinstance(data_filename, str) and not Path(data_filename).is_file():
-        data_filename = False
-    if data_filename:
-        with open(data_filename, "r") as data_file:  # pylint: disable=unspecified-encoding
-            try:
-                data = json.load(data_file)
-            except json.JSONDecodeError:
-                return False
-            control = data["control"]
-            return control.get("AutoLoadWorkspaceToggle", False)
+STARTUP_START_BLANK = "Start Blank"
+STARTUP_LOAD_LAST = "Load Last Workspace"
+STARTUP_ASK = "Ask"
+
+
+def _read_workspace_control(data_filename: str | Path) -> dict:
+    try:
+        with open(data_filename, "r", encoding="utf-8") as data_file:
+            control = json.load(data_file).get("control", {})
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return {}
+    return control if isinstance(control, dict) else {}
+
+
+def get_saved_execution_provider(data_filename: str | Path) -> Optional[str]:
+    """Execution provider saved in the workspace, if still available on this system."""
+    provider = _read_workspace_control(data_filename).get("ProvidersPrioritySelection")
+    if provider in platform_support.available_execution_providers():
+        return provider
+    return None
+
+
+def get_startup_workspace_mode(data_filename: str | Path) -> str:
+    """Startup behaviour saved in the workspace; honours the legacy auto-load toggle."""
+    control = _read_workspace_control(data_filename)
+    mode = control.get("StartupWorkspaceSelection")
+    if mode in (STARTUP_START_BLANK, STARTUP_LOAD_LAST, STARTUP_ASK):
+        return mode
+    if control.get("AutoLoadWorkspaceToggle"):
+        return STARTUP_LOAD_LAST
+    return STARTUP_START_BLANK
 
 
 def load_saved_workspace(
@@ -1012,6 +1026,7 @@ def load_saved_workspace(
             main_window.loaded_embedding_filename = data.get(
                 "loaded_embedding_filename", ""
             )
+            _restore_current_workspace_path(main_window, str(data_filename), data)
             common_widget_actions.set_control_widgets_values(main_window)
             # Set output folder using .get() with a default empty string
             output_folder = control.get("OutputMediaFolder", "")
@@ -1245,17 +1260,82 @@ def load_saved_workspace(
             return
 
 
+def _is_last_workspace_file(data_filename: str | Path) -> bool:
+    return str(data_filename).endswith("last_workspace.json")
+
+
+def _restore_current_workspace_path(
+    main_window: "MainWindow", data_filename: str, data: dict
+) -> None:
+    """Remembers which workspace file was opened so it can be saved in place."""
+    if not _is_last_workspace_file(data_filename):
+        main_window.current_workspace_path = str(data_filename)
+        return
+    remembered = data.get("current_workspace_path") or ""
+    main_window.current_workspace_path = (
+        remembered if remembered and Path(remembered).is_file() else ""
+    )
+
+
+def new_workspace(main_window: "MainWindow", *args) -> None:
+    """Clears media, faces, embeddings and markers and forgets the current workspace file."""
+    if video_control_actions.block_if_issue_scan_active(
+        main_window, "start a new workspace"
+    ):
+        return
+    if (
+        QtWidgets.QMessageBox.question(
+            main_window,
+            "New Workspace",
+            "Start a new workspace?\n\n"
+            "Target media, input faces, embeddings, markers and alignments will be "
+            "cleared. Unsaved changes will be lost. Settings are kept.",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        != QtWidgets.QMessageBox.Yes
+    ):
+        return
+
+    from app.ui.widgets.actions import job_manager_actions
+
+    main_window.video_processor.stop_processing()
+    if main_window.selected_video_button:
+        main_window.selected_video_button.deselect_currently_selected_video(main_window)
+    job_manager_actions._clear_main_window_state(main_window)
+    video_control_actions.set_issue_frames_by_face(main_window, {})
+    video_control_actions.set_dropped_frames(main_window, [])
+    video_control_actions.reset_media_buttons(main_window)
+    main_window.loaded_embedding_filename = ""
+    main_window.current_workspace_path = ""
+    common_widget_actions.create_and_show_toast_message(
+        main_window, "New Workspace", "Started a new workspace."
+    )
+
+
 def save_current_workspace(
-    main_window: "MainWindow", data_filename: str | Path | bool = False
+    main_window: "MainWindow",
+    data_filename: str | Path | bool = False,
+    save_as: bool = False,
 ):
+    current_workspace_path = getattr(main_window, "current_workspace_path", "") or ""
     # Prompt for filename FIRST so we can use it for the registry and avoid useless work if cancelled
     if data_filename is False:
-        dialog_filename, _ = QtWidgets.QFileDialog.getSaveFileName(
-            main_window, filter="JSON (*.json)"
-        )
-        if not dialog_filename:
-            return  # User cancelled the save operation
-        data_filename = dialog_filename
+        if (
+            not save_as
+            and current_workspace_path
+            and Path(current_workspace_path).is_file()
+        ):
+            data_filename = current_workspace_path
+        else:
+            dialog_filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+                main_window,
+                dir=current_workspace_path,
+                filter="JSON (*.json)",
+            )
+            if not dialog_filename:
+                return  # User cancelled the save operation
+            data_filename = dialog_filename
 
     resolved_parent_path = str(data_filename)
 
@@ -1505,6 +1585,11 @@ def save_current_workspace(
         "last_target_media_folder_path": main_window.last_target_media_folder_path,
         "last_input_media_folder_path": main_window.last_input_media_folder_path,
         "loaded_embedding_filename": main_window.loaded_embedding_filename,
+        "current_workspace_path": (
+            current_workspace_path
+            if _is_last_workspace_file(str(data_filename))
+            else str(data_filename)
+        ),
         "current_widget_parameters": current_params_to_save,  # Use the safely prepared dict
         "tab_state": tab_state,  # Add the tab state to the saved data
         "window_state_data": window_state_data,
@@ -1527,6 +1612,7 @@ def save_current_workspace(
             if str(data_filename).endswith("last_workspace.json"):
                 print(f"[INFO] Last workspace saved to: {data_filename}")
             else:
+                main_window.current_workspace_path = str(data_filename)
                 common_widget_actions.create_and_show_toast_message(
                     main_window,
                     "Workspace Saved",

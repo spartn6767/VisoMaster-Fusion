@@ -269,6 +269,7 @@ def _clear_main_window_state(main_window: "MainWindow"):
     )  # Clear markers from slider and data
     main_window.job_marker_pairs.clear()  # Clear job segments
     main_window.alignments.clear()
+    main_window.current_workspace_path = ""
 
     if hasattr(main_window, "selected_video_button"):
         btn = main_window.selected_video_button
