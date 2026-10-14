@@ -4,6 +4,7 @@ from functools import partial
 from PySide6 import QtWidgets, QtGui, QtCore
 from app.ui.widgets.actions import list_view_actions
 from app.ui.widgets.actions import video_control_actions
+from app.ui.widgets.actions import alignment_edit_actions
 from app.ui.widgets import ui_workers
 import app.helpers.miscellaneous as misc_helpers
 
@@ -19,6 +20,8 @@ class GraphicsViewEventFilter(QtCore.QObject):
     def eventFilter(self, graphics_object: QtWidgets.QGraphicsView, event):
         if event.type() == QtCore.QEvent.Type.MouseButtonPress:
             if event.button() == QtCore.Qt.MouseButton.LeftButton:
+                if alignment_edit_actions.is_alignment_edit_active(self.main_window):
+                    return False
                 self.main_window.buttonMediaPlay.click()
                 # You can emit a signal or call another function here
                 return True  # Mark the event as handled

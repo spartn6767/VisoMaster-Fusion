@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 import app.helpers.miscellaneous as misc_helpers
 from app.ui.widgets.actions import common_actions as common_widget_actions
 from app.ui.widgets.actions import graphics_view_actions
+from app.ui.widgets.actions import alignment_edit_actions
 import app.ui.widgets.actions.layout_actions as layout_actions
 from app.ui.widgets.actions import card_actions
 from app.ui.widgets import widget_components
@@ -1696,7 +1697,14 @@ def show_graphics_view_context_menu(
         mask_actions[action] = option
     menu.addSeparator()
     save_action = menu.addAction("Save Image")
+    view = main_window.graphicsViewFrame
+    alignment_handlers = alignment_edit_actions.add_context_menu_actions(
+        main_window, menu, view.mapToScene(view.viewport().mapFromGlobal(global_pos))
+    )
     selected_action = menu.exec(global_pos)
+    if selected_action in alignment_handlers:
+        alignment_handlers[selected_action]()
+        return
     if selected_action is fit_action:
         fit_view_to_current_image(main_window)
     elif selected_action is zoom_100_action:
@@ -1874,7 +1882,7 @@ def enable_zoom_and_pan(
             self.setCursor(
                 QtCore.Qt.CursorShape.ClosedHandCursor
             )  # Change cursor to indicate panning
-        else:
+        elif not alignment_edit_actions.handle_mouse_press(main_window, self, event):
             # Explicitly call the base class implementation
             QtWidgets.QGraphicsView.mousePressEvent(self, event)
 
@@ -1890,7 +1898,7 @@ def enable_zoom_and_pan(
             v_bar = self.verticalScrollBar()
             h_bar.setValue(h_bar.value() - delta.x())
             v_bar.setValue(v_bar.value() - delta.y())
-        else:
+        elif not alignment_edit_actions.handle_mouse_move(main_window, self, event):
             # Explicitly call the base class implementation
             QtWidgets.QGraphicsView.mouseMoveEvent(self, event)
 
@@ -1901,7 +1909,7 @@ def enable_zoom_and_pan(
         if event.button() == QtCore.Qt.MouseButton.MiddleButton:
             self.is_panning = False
             self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)  # Reset the cursor
-        else:
+        elif not alignment_edit_actions.handle_mouse_release(main_window, self, event):
             # Explicitly call the base class implementation
             QtWidgets.QGraphicsView.mouseReleaseEvent(self, event)
 

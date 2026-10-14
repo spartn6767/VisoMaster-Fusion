@@ -1,0 +1,104 @@
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from app.processors.video_utils.alignment_store import AlignmentStore, SOURCE_MANUAL
+from app.ui.widgets.actions import alignment_edit_actions as aea
+
+
+@pytest.fixture
+def main_window(monkeypatch):
+    monkeypatch.setattr(aea, "_refresh", lambda mw: None)
+    return SimpleNamespace(
+        alignments=AlignmentStore(),
+        video_processor=SimpleNamespace(media_path="/v.mp4"),
+    )
+
+
+def test_template_kps_inside_bbox():
+    kps = aea.template_kps_for_bbox([0.2, 0.2, 0.6, 0.8])
+    assert kps.shape == (5, 2)
+    assert np.all((kps[:, 0] > 0.2) & (kps[:, 0] < 0.6))
+    assert np.all((kps[:, 1] > 0.2) & (kps[:, 1] < 0.8))
+
+
+def test_bbox_from_corners_normalises_order():
+    np.testing.assert_allclose(
+        aea.bbox_from_corners((0.5, 0.6), (0.1, 0.2)), [0.1, 0.2, 0.5, 0.6]
+    )
+
+
+def test_face_index_at_prefers_smallest_box():
+    faces = [{"bbox": [0, 0, 1, 1]}, {"bbox": [0.4, 0.4, 0.6, 0.6]}]
+    assert aea.face_index_at(faces, 0.5, 0.5) == 1
+    assert aea.face_index_at(faces, 0.1, 0.1) == 0
+    assert aea.face_index_at(faces[1:], 0.1, 0.1) is None
+
+
+def test_add_manual_face_creates_pinned_refine_entry(main_window):
+    idx = aea.add_manual_face(main_window, 7, np.array([0.1, 0.1, 0.3, 0.4]))
+
+    faces = main_window.alignments.get(7, 100, 100, "other-signature")
+    assert idx == 0 and faces is not None
+    assert faces[0]["source"] == SOURCE_MANUAL and faces[0]["refine"] is True
+    np.testing.assert_allclose(faces[0]["bbox"], [10, 10, 30, 40], atol=1e-3)
+
+
+def test_move_landmark_overrides_point_and_pins(main_window):
+    store = main_window.alignments
+    face = {
+        "bbox": np.array([10, 10, 50, 50], np.float32),
+        "kps_5": np.full((5, 2), 20, np.float32),
+        "kps_203": np.ones((203, 2), np.float32),
+        "embedding": np.ones(4, np.float32),
+    }
+    store.put(3, [face], 100, 100, "sig", "single")
+
+    assert aea.move_landmark(main_window, 3, 0, 2, 0.4, 0.45)
+
+    stored = store.get(3, 100, 100, "changed-signature")
+    assert stored is not None
+    assert stored[0]["source"] == SOURCE_MANUAL
+    np.testing.assert_allclose(stored[0]["kps_5"][2], [40, 45], atol=1e-3)
+    assert stored[0]["kps_203"] is None and stored[0]["embedding"] is None
+    assert not aea.move_landmark(main_window, 3, 5, 0, 0.1, 0.1)
+
+
+def test_delete_face_keeps_remaining_faces_pinned(main_window):
+    store = main_window.alignments
+    faces = [
+        {
+            "bbox": np.array([0, 0, 10, 10], np.float32),
+            "kps_5": np.ones((5, 2), np.float32),
+        },
+        {
+            "bbox": np.array([20, 20, 30, 30], np.float32),
+            "kps_5": np.ones((5, 2), np.float32),
+        },
+    ]
+    store.put(1, faces, 100, 100, "sig")
+
+    aea.delete_face(main_window, 1, 0)
+
+    remaining = store.get(1, 100, 100, "other")
+    assert remaining is not None and len(remaining) == 1
+    assert remaining[0]["source"] == SOURCE_MANUAL
+
+
+def test_refine_flag_is_not_persisted(tmp_path):
+    store = AlignmentStore()
+    store.add_face(
+        0,
+        {"bbox": [0, 0, 10, 10], "kps_5": np.ones((5, 2)), "refine": True},
+        100,
+        100,
+    )
+    path = str(tmp_path / "a.alignments.npz")
+    store.save(path)
+    loaded = AlignmentStore()
+    loaded.load(path)
+
+    faces = loaded.get(0, 100, 100, None)
+    assert faces is not None and faces[0]["refine"] is False
+    assert faces[0]["source"] == SOURCE_MANUAL

@@ -184,6 +184,15 @@ class StandardProcessor:
             if use_alignment_cache and alignment_store is not None
             else None
         )
+        if cached_alignment_faces is not None:
+            self._refine_manual_alignments(
+                img,
+                cached_alignment_faces,
+                control,
+                alignment_frame,
+                cache_frame_w,
+                cache_frame_h,
+            )
         pending_alignment_faces: list[dict] | None = None
 
         # --- DETECTION PHASE ---
@@ -441,6 +450,7 @@ class StandardProcessor:
                 self._complete_cached_alignments(
                     img,
                     det_faces_data_for_display,
+                    cached_alignment_faces,
                     control,
                     alignment_frame,
                     cache_frame_w,
@@ -938,10 +948,47 @@ class StandardProcessor:
 
         return processed_tensor_rgb_uint8
 
+    def _refine_manual_alignments(
+        self,
+        img: torch.Tensor,
+        faces: list[dict],
+        control: dict,
+        frame_number: int,
+        frame_w: int,
+        frame_h: int,
+    ) -> None:
+        """Detects landmarks for manual faces that were added as a bare bbox."""
+        store = self.worker.main_window.alignments
+        for idx, face in enumerate(faces):
+            if not face.get("refine"):
+                continue
+            kpss_5, kpss, _ = self.worker.function_worker.run_detect_landmark(
+                img,
+                face["bbox"],
+                face["kps_5"],
+                detect_mode=control.get("LandmarkDetectModelSelection", "203"),
+                score=0.0,
+                use_mean_eyes=control.get("LandmarkMeanEyesToggle", False),
+                from_points=False,
+            )
+            updates: dict = {"refine": False, "embedding": None}
+            pts_5 = np.asarray(kpss_5, dtype=np.float32)
+            if pts_5.size >= 10:
+                updates["kps_5"] = pts_5.reshape(-1, 2)[:5]
+            pts_all = np.asarray(kpss, dtype=np.float32)
+            if pts_all.size >= 10:
+                pts_all = pts_all.reshape(-1, 2)
+                updates["kps_all"] = pts_all
+                if pts_all.shape[0] == 203:
+                    updates["kps_203"] = pts_all
+            face.update(updates)
+            store.update_face(frame_number, idx, frame_w, frame_h, **updates)
+
     def _complete_cached_alignments(
         self,
         img: torch.Tensor,
         det_faces: list,
+        cached_faces: list,
         control: dict,
         frame_number: int,
         frame_w: int,
@@ -953,6 +1000,12 @@ class StandardProcessor:
         needs_203 = faces_require_203(self.worker.parameters, edit_active)
         for idx, fface in enumerate(det_faces):
             updates: dict = {}
+            if (
+                idx < len(cached_faces)
+                and cached_faces[idx].get("embedding") is None
+                and fface.get("embedding") is not None
+            ):
+                updates["embedding"] = fface["embedding"]
             if needs_203 and fface.get("kps_203") is None:
                 _, lm_203, _ = self.worker.function_worker.run_detect_landmark(
                     img,

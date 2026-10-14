@@ -139,6 +139,8 @@ class AlignmentFace:
     embedding: Optional[np.ndarray] = None
     face_id: Optional[str] = None
     source: str = SOURCE_SEQUENTIAL
+    # Manual bbox whose landmarks the worker still has to detect (not persisted).
+    refine: bool = False
 
     def to_pixels(self, frame_w: int, frame_h: int) -> dict[str, Any]:
         bbox: np.ndarray = self.bbox.astype(np.float32, copy=True)
@@ -152,6 +154,7 @@ class AlignmentFace:
             "embedding": None if self.embedding is None else self.embedding.copy(),
             "face_id": self.face_id,
             "source": self.source,
+            "refine": self.refine,
         }
 
     @classmethod
@@ -177,6 +180,7 @@ class AlignmentFace:
             else np.asarray(embedding, dtype=np.float32).reshape(-1).copy(),
             face_id=None if face_id is None else str(face_id),
             source=str(face.get("source", source)),
+            refine=bool(face.get("refine", False)),
         )
 
 
@@ -279,6 +283,37 @@ class AlignmentStore:
         with self._lock:
             if self._frames.pop(int(frame_number), None) is not None:
                 self._revision += 1
+
+    def add_face(
+        self,
+        frame_number: int,
+        face: Mapping[str, Any],
+        frame_w: int,
+        frame_h: int,
+    ) -> int:
+        """Appends a manual face (pixel coords) to a frame; returns its index."""
+        record = AlignmentFace.from_pixels(face, frame_w, frame_h, SOURCE_MANUAL)
+        record.source = SOURCE_MANUAL
+        with self._lock:
+            frame = self._frames.get(int(frame_number))
+            if frame is None:
+                frame = FrameAlignments("")
+                self._frames[int(frame_number)] = frame
+            frame.faces.append(record)
+            self._revision += 1
+            return len(frame.faces) - 1
+
+    def remove_face(self, frame_number: int, index: int) -> bool:
+        """Removes one face; the remaining faces become manual so the frame stays as edited."""
+        with self._lock:
+            frame = self._frames.get(int(frame_number))
+            if frame is None or not 0 <= index < len(frame.faces):
+                return False
+            frame.faces.pop(index)
+            for face in frame.faces:
+                face.source = SOURCE_MANUAL
+            self._revision += 1
+            return True
 
     def put(
         self,

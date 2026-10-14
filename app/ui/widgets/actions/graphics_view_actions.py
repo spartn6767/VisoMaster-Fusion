@@ -1,6 +1,7 @@
 from PySide6 import QtWidgets, QtGui, QtCore
 from typing import TYPE_CHECKING
 from app.ui.widgets.actions import video_control_actions
+from app.ui.widgets.actions import alignment_edit_actions
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
@@ -69,6 +70,8 @@ def update_graphics_view(
     # Reset the view or restore the previous transform
     if reset_fit:
         fit_image_to_view(main_window, pixmap_item, scene_rect)
+
+    alignment_edit_actions.refresh_alignment_overlay(main_window)
 
 
 def zoom_andfit_image_to_view_onchange(main_window: "MainWindow", new_transform):
