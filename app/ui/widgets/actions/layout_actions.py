@@ -762,6 +762,9 @@ def set_up_menu_actions(main_window: "MainWindow"):
             main_window,
         )
     )
+    main_window.actionNew_Workspace.triggered.connect(
+        partial(save_load_actions.new_workspace, main_window)
+    )
     main_window.actionSave_WorkspaceAs.triggered.connect(
         partial(
             save_load_actions.save_current_workspace,

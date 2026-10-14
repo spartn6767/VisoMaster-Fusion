@@ -1369,3 +1369,71 @@ def test_restore_current_workspace_path(
             "": "",
         }[expected]
     )
+
+
+def _patch_new_workspace_deps(monkeypatch, confirm: bool) -> SimpleNamespace:
+    import app.ui.widgets.actions as actions_pkg
+
+    monkeypatch.setattr(
+        save_load_actions.QtWidgets,
+        "QMessageBox",
+        SimpleNamespace(Yes=1, No=0, question=MagicMock(return_value=int(confirm))),
+    )
+    monkeypatch.setattr(
+        save_load_actions.video_control_actions,
+        "block_if_issue_scan_active",
+        lambda *a, **k: False,
+    )
+    for name in (
+        "set_issue_frames_by_face",
+        "set_dropped_frames",
+        "reset_media_buttons",
+    ):
+        monkeypatch.setattr(save_load_actions.video_control_actions, name, MagicMock())
+    monkeypatch.setattr(
+        save_load_actions.common_widget_actions,
+        "create_and_show_toast_message",
+        MagicMock(),
+    )
+    fake_job_manager = SimpleNamespace(_clear_main_window_state=MagicMock())
+    monkeypatch.setitem(
+        sys.modules, "app.ui.widgets.actions.job_manager_actions", fake_job_manager
+    )
+    monkeypatch.setattr(
+        actions_pkg, "job_manager_actions", fake_job_manager, raising=False
+    )
+    return fake_job_manager
+
+
+def _new_workspace_window(tmp_path: Path) -> SimpleNamespace:
+    selected = SimpleNamespace(deselect_currently_selected_video=MagicMock())
+    return SimpleNamespace(
+        video_processor=SimpleNamespace(stop_processing=MagicMock()),
+        selected_video_button=selected,
+        loaded_embedding_filename="emb.json",
+        current_workspace_path=str(tmp_path / "project.json"),
+    )
+
+
+def test_new_workspace_clears_state_and_forgets_current_file(tmp_path, monkeypatch):
+    fake_job_manager = _patch_new_workspace_deps(monkeypatch, confirm=True)
+    main_window = _new_workspace_window(tmp_path)
+    selected = main_window.selected_video_button
+
+    save_load_actions.new_workspace(main_window, False)
+
+    selected.deselect_currently_selected_video.assert_called_once_with(main_window)
+    fake_job_manager._clear_main_window_state.assert_called_once_with(main_window)
+    assert main_window.current_workspace_path == ""
+    assert main_window.loaded_embedding_filename == ""
+
+
+def test_new_workspace_cancel_keeps_state(tmp_path, monkeypatch):
+    fake_job_manager = _patch_new_workspace_deps(monkeypatch, confirm=False)
+    main_window = _new_workspace_window(tmp_path)
+
+    save_load_actions.new_workspace(main_window, False)
+
+    fake_job_manager._clear_main_window_state.assert_not_called()
+    main_window.video_processor.stop_processing.assert_not_called()
+    assert main_window.current_workspace_path == str(tmp_path / "project.json")

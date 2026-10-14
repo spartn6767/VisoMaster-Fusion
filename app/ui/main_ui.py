@@ -729,8 +729,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.actionSave_WorkspaceAs = QtGui.QAction(
             "Save Workspace As...", self.menuFile
         )
+        self.actionNew_Workspace = QtGui.QAction("New Workspace", self.menuFile)
 
         self.menuFile.clear()
+        self.menuFile.addAction(self.actionNew_Workspace)
         self.menuFile.addAction(self.actionLoad_SavedWorkspace)
         self.menuFile.addAction(self.actionReset_to_LastWorkspace)
         self.menuFile.addAction(self.actionSave_LastWorkspace)

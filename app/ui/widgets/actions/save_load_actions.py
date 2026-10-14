@@ -1232,6 +1232,42 @@ def _restore_current_workspace_path(
     )
 
 
+def new_workspace(main_window: "MainWindow", *args) -> None:
+    """Clears media, faces, embeddings and markers and forgets the current workspace file."""
+    if video_control_actions.block_if_issue_scan_active(
+        main_window, "start a new workspace"
+    ):
+        return
+    if (
+        QtWidgets.QMessageBox.question(
+            main_window,
+            "New Workspace",
+            "Start a new workspace?\n\n"
+            "Target media, input faces, embeddings, markers and alignments will be "
+            "cleared. Unsaved changes will be lost. Settings are kept.",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        != QtWidgets.QMessageBox.Yes
+    ):
+        return
+
+    from app.ui.widgets.actions import job_manager_actions
+
+    main_window.video_processor.stop_processing()
+    if main_window.selected_video_button:
+        main_window.selected_video_button.deselect_currently_selected_video(main_window)
+    job_manager_actions._clear_main_window_state(main_window)
+    video_control_actions.set_issue_frames_by_face(main_window, {})
+    video_control_actions.set_dropped_frames(main_window, [])
+    video_control_actions.reset_media_buttons(main_window)
+    main_window.loaded_embedding_filename = ""
+    main_window.current_workspace_path = ""
+    common_widget_actions.create_and_show_toast_message(
+        main_window, "New Workspace", "Started a new workspace."
+    )
+
+
 def save_current_workspace(
     main_window: "MainWindow",
     data_filename: str | Path | bool = False,
