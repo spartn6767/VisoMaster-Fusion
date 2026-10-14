@@ -1501,7 +1501,7 @@ def test_upgrade_legacy_control_applies_new_defaults():
         "OtherToggle": True,
     }
 
-    upgraded = save_load_actions.upgrade_legacy_control(legacy, None)
+    upgraded = save_load_actions.upgrade_legacy_control(legacy)
 
     assert upgraded["InputFacesFolderRecursiveToggle"] is True
     assert upgraded["ShowSeekBarThumbnailsToggle"] is False
@@ -1515,12 +1515,4 @@ def test_upgrade_legacy_control_keeps_choices_saved_after_upgrade():
         "ShowSeekBarThumbnailsToggle": True,
     }
 
-    assert (
-        save_load_actions.upgrade_legacy_control(
-            current, save_load_actions.CONTROL_DEFAULTS_VERSION
-        )
-        == current
-    )
-    assert save_load_actions.upgrade_legacy_control(current, 1)[
-        "InputFacesFolderRecursiveToggle"
-    ]
+    assert save_load_actions.upgrade_legacy_control(current) == current
