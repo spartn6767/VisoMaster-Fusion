@@ -7,7 +7,7 @@ from pathlib import Path
 import uuid
 import copy
 from functools import partial
-from typing import TYPE_CHECKING, Dict, Union, cast, Optional, List
+from typing import TYPE_CHECKING, Any, Dict, Union, cast, Optional, List
 
 from PySide6 import QtWidgets, QtCore
 import numpy as np
@@ -611,26 +611,35 @@ STARTUP_START_BLANK = "Start Blank"
 STARTUP_LOAD_LAST = "Load Last Workspace"
 STARTUP_ASK = "Ask"
 
-# Defaults changed alongside StartupWorkspaceSelection; settings saved before
-# that key existed get the new values once, later choices are kept.
+# Bump when changing defaults that should override settings saved by older
+# versions; files with an older version get the new values once.
+CONTROL_DEFAULTS_VERSION = 2
 _LEGACY_CONTROL_DEFAULT_UPGRADES = {
     "InputFacesFolderRecursiveToggle": True,
     "ShowSeekBarThumbnailsToggle": False,
 }
 
 
-def upgrade_legacy_control(saved_control: dict) -> dict:
-    if "StartupWorkspaceSelection" in saved_control:
+def upgrade_legacy_control(saved_control: dict, defaults_version: Any) -> dict:
+    if (
+        isinstance(defaults_version, int)
+        and defaults_version >= CONTROL_DEFAULTS_VERSION
+    ):
         return saved_control
     return {**saved_control, **_LEGACY_CONTROL_DEFAULT_UPGRADES}
 
 
-def _read_workspace_control(data_filename: str | Path) -> dict:
+def _read_workspace_data(data_filename: str | Path) -> dict:
     try:
         with open(data_filename, "r", encoding="utf-8") as data_file:
-            control = json.load(data_file).get("control", {})
-    except (OSError, json.JSONDecodeError, AttributeError):
+            data = json.load(data_file)
+    except (OSError, json.JSONDecodeError):
         return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _read_workspace_control(data_filename: str | Path) -> dict:
+    control = _read_workspace_data(data_filename).get("control", {})
     return control if isinstance(control, dict) else {}
 
 
@@ -649,11 +658,13 @@ def load_workspace_settings_only(
     main_window: "MainWindow", data_filename: str | Path
 ) -> None:
     """Applies the saved settings (control) without loading media, faces or markers."""
-    saved_control = _read_workspace_control(data_filename)
-    if not saved_control:
+    data = _read_workspace_data(data_filename)
+    saved_control = data.get("control")
+    if not isinstance(saved_control, dict) or not saved_control:
         return
     control = sanitize_state_dictionary(
-        upgrade_legacy_control(saved_control), main_window.control
+        upgrade_legacy_control(saved_control, data.get("control_defaults_version")),
+        main_window.control,
     )
     for control_name, control_value in control.items():
         main_window.control[control_name] = control_value
@@ -694,7 +705,10 @@ def load_saved_workspace(
 
             # Load control (settings)
             control = sanitize_state_dictionary(
-                upgrade_legacy_control(data.get("control", {})), main_window.control
+                upgrade_legacy_control(
+                    data.get("control", {}), data.get("control_defaults_version")
+                ),
+                main_window.control,
             )
 
             for control_name, control_value in control.items():
@@ -1578,6 +1592,7 @@ def save_current_workspace(
         "last_target_media_folder_path": main_window.last_target_media_folder_path,
         "last_input_media_folder_path": main_window.last_input_media_folder_path,
         "loaded_embedding_filename": main_window.loaded_embedding_filename,
+        "control_defaults_version": CONTROL_DEFAULTS_VERSION,
         "current_workspace_path": (
             current_workspace_path
             if _is_last_workspace_file(str(data_filename))
