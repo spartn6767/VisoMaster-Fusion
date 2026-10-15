@@ -302,3 +302,16 @@ def test_load_saved_workspace_stops_when_prompt_cancelled(monkeypatch, tmp_path)
     )
 
     save_load_actions.load_saved_workspace(SimpleNamespace(), str(workspace))
+
+
+def test_reset_all_alignments_needs_confirmation(main_window, monkeypatch):
+    store = main_window.alignments
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    store.add_face(2, _face(10, 10, 30, 30), 100, 100)
+    monkeypatch.setattr(aea, "refresh_alignment_overlay", lambda mw: None)
+    monkeypatch.setattr(aea, "_confirm_reset_all_alignments", lambda mw, n: False)
+    assert aea.reset_all_alignments(main_window) == 0
+    assert len(store) == 2
+    monkeypatch.setattr(aea, "_confirm_reset_all_alignments", lambda mw, n: True)
+    assert aea.reset_all_alignments(main_window) == 2
+    assert len(store) == 0

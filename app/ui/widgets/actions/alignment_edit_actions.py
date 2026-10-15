@@ -354,6 +354,31 @@ def redetect_frame(main_window: "MainWindow", frame_number: int) -> None:
     _refresh(main_window)
 
 
+def reset_all_alignments(main_window: "MainWindow") -> int:
+    """Discards every stored alignment (manual edits and masks included); returns the frame count."""
+    frame_count = len(main_window.alignments)
+    if frame_count == 0 or not _confirm_reset_all_alignments(main_window, frame_count):
+        return 0
+    main_window.alignments.clear()
+    refresh_alignment_overlay(main_window)
+    _refresh(main_window)
+    return frame_count
+
+
+def _confirm_reset_all_alignments(main_window: "MainWindow", frame_count: int) -> bool:
+    answer = QtWidgets.QMessageBox.question(
+        main_window,
+        "Reset All Alignments",
+        f"Discard stored alignments for {frame_count} frames, including manual "
+        "edits and painted masks?\n\nFaces will be detected again as frames are "
+        "played, rendered or seeked.",
+        QtWidgets.QMessageBox.StandardButton.Yes
+        | QtWidgets.QMessageBox.StandardButton.No,
+        QtWidgets.QMessageBox.StandardButton.No,
+    )
+    return answer == QtWidgets.QMessageBox.StandardButton.Yes
+
+
 class _LandmarkHandle(QtWidgets.QGraphicsEllipseItem):
     def __init__(self, on_moved: Callable[[QtCore.QPointF], Any]):
         r = _HANDLE_RADIUS
@@ -701,6 +726,9 @@ def add_context_menu_actions(
     if frame_number in main_window.alignments:
         redetect_action = menu.addAction("Re-detect Frame")
         handlers[redetect_action] = partial(redetect_frame, main_window, frame_number)
+    reset_all_action = menu.addAction("Reset All Alignments")
+    reset_all_action.setEnabled(len(main_window.alignments) > 0)
+    handlers[reset_all_action] = partial(reset_all_alignments, main_window)
     return handlers
 
 
