@@ -356,8 +356,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.frameSkipStepSpinBox.setToolTip(
             "Frame Skip Step: frames moved by the forward/rewind buttons and the mouse wheel on the seek bar."
         )
-        self.horizontalLayoutMediaButtons.insertWidget(
-            self.horizontalLayoutMediaButtons.indexOf(self.frameAdvanceButton) + 1,
+        transport_layout = (
+            getattr(self, "mediaControlsMainLayout", None)
+            or self.horizontalLayoutMediaButtons
+        )
+        transport_layout.insertWidget(
+            transport_layout.indexOf(self.frameAdvanceButton) + 1,
             self.frameSkipStepSpinBox,
         )
         self.frameSkipStepSpinBox.valueChanged.connect(
@@ -1470,10 +1474,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self.buttonMediaRecord,
             self.buttonMediaPlay,
             self.frameAdvanceButton,
+            getattr(self, "frameSkipStepSpinBox", None),
             self.liveSoundButton,
             self.viewFullScreenButton,
             self.theatreModeButton,
         ]:
+            if button is None:
+                continue
             button.show()
             self.mediaControlsMainLayout.addWidget(button)
 
