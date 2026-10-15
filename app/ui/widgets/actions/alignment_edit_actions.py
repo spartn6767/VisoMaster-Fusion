@@ -93,17 +93,6 @@ def nearest_face_index(faces: Sequence[dict], x: float, y: float) -> Optional[in
     return int(np.argmin(np.sum((centres - (x, y)) ** 2, axis=1)))
 
 
-def adjacent_frame_labels(
-    store: AlignmentStore, frame_number: int, previous_label: str, next_label: str
-) -> list[tuple[str, Optional[int]]]:
-    """Menu labels for the nearest stored frames before and after ``frame_number``."""
-    items: list[tuple[str, Optional[int]]] = []
-    for label, step in ((previous_label, -1), (next_label, 1)):
-        other = store.nearest_frame(frame_number, step)
-        items.append((label if other is None else f"{label} (frame {other})", other))
-    return items
-
-
 def select_face(main_window: "MainWindow", frame_number: int, face_index: int) -> None:
     """Marks the face the floating Edit Alignments bar acts on."""
     setattr(main_window, ACTIVE_FACE_ATTR, (int(frame_number), int(face_index)))
@@ -742,7 +731,8 @@ def handle_mouse_release(
 def add_context_menu_actions(
     main_window: "MainWindow", menu: QtWidgets.QMenu, scene_pos: QtCore.QPointF
 ) -> dict[QtGui.QAction, Callable[[], Any]]:
-    """Adds the Edit Alignments entries; returns handlers keyed by action."""
+    """Adds the Edit Alignments toggle (right-click also selects the face for the
+    floating bar); returns handlers keyed by action."""
     handlers: dict[QtGui.QAction, Callable[[], Any]] = {}
     menu.addSeparator()
     toggle = menu.addAction("Edit Alignments")
@@ -761,71 +751,10 @@ def add_context_menu_actions(
     )
     face_index = face_index_at(faces, *point) if faces else None
     if face_index is not None:
+        from app.ui.widgets.actions import edit_toolbar_actions
+
         select_face(main_window, frame_number, face_index)
-
-    copy_action = menu.addAction("Copy Face")
-    copy_action.setEnabled(face_index is not None)
-    if face_index is not None:
-        handlers[copy_action] = partial(
-            copy_face, main_window, frame_number, face_index
-        )
-    for label, other_frame in adjacent_frame_labels(
-        main_window.alignments, frame_number, "Paste Previous", "Paste Next"
-    ):
-        other_index = (
-            None
-            if other_frame is None
-            else nearest_face_index(_frame_faces(main_window, other_frame), *point)
-        )
-        action = menu.addAction(label)
-        action.setEnabled(other_index is not None)
-        if other_frame is not None and other_index is not None:
-            handlers[action] = partial(
-                paste_from_frame,
-                main_window,
-                other_frame,
-                other_index,
-                frame_number,
-                face_index,
-            )
-    paste_action = menu.addAction("Paste Face")
-    paste_action.setEnabled(getattr(main_window, _CLIPBOARD_ATTR, None) is not None)
-    handlers[paste_action] = partial(paste_face, main_window, frame_number, face_index)
-
-    if face_index is not None:
-        assigned = faces[face_index].get("assigned_face_id")
-        targets = getattr(main_window, "target_faces", None) or {}
-        target_menu = menu.addMenu("Assign to Target")
-        for n, (target_id, target) in enumerate(targets.items(), start=1):
-            target_face_id = str(getattr(target, "face_id", target_id))
-            action = target_menu.addAction(_target_label(target, n))
-            action.setCheckable(True)
-            action.setChecked(target_face_id == assigned)
-            handlers[action] = partial(
-                assign_target, main_window, frame_number, face_index, target_face_id
-            )
-        if not targets:
-            target_menu.addAction("No target faces").setEnabled(False)
-        if assigned:
-            target_menu.addSeparator()
-            clear_action = target_menu.addAction("Clear Assignment")
-            handlers[clear_action] = partial(
-                assign_target, main_window, frame_number, face_index, None
-            )
-        add_target_action = menu.addAction("Add as Target Face")
-        handlers[add_target_action] = partial(
-            add_as_target_face, main_window, frame_number, face_index
-        )
-        delete_action = menu.addAction("Delete Face")
-        handlers[delete_action] = partial(
-            delete_face, main_window, frame_number, face_index
-        )
-    if frame_number in main_window.alignments:
-        redetect_action = menu.addAction("Re-detect Frame")
-        handlers[redetect_action] = partial(redetect_frame, main_window, frame_number)
-    reset_all_action = menu.addAction("Reset All Alignments")
-    reset_all_action.setEnabled(len(main_window.alignments) > 0)
-    handlers[reset_all_action] = partial(reset_all_alignments, main_window)
+        edit_toolbar_actions.sync_alignment_bar(main_window)
     return handlers
 
 

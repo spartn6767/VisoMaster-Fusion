@@ -584,7 +584,6 @@ def add_context_menu_actions(
     handlers[toggle] = lambda: set_mask_paint_mode(main_window, toggle.isChecked())
     if not is_mask_paint_active(main_window):
         return handlers
-    store = main_window.alignments
     frame_number = aea.current_frame_number(main_window)
     rect = aea._pixmap_rect(main_window)
     point = (
@@ -597,48 +596,5 @@ def add_context_menu_actions(
     )
     if face_index is not None:
         set_active_face(main_window, frame_number, face_index)
-        has_mask = store.effective_mask(frame_number, face_index) is not None
-        copy_action = menu.addAction("Copy Mask")
-        copy_action.setEnabled(has_mask)
-        handlers[copy_action] = partial(
-            copy_mask, main_window, frame_number, face_index
-        )
-        paste_action = menu.addAction("Paste Mask")
-        paste_action.setEnabled(getattr(main_window, _CLIPBOARD_ATTR, None) is not None)
-        handlers[paste_action] = partial(
-            paste_mask, main_window, frame_number, face_index
-        )
-        for label, other_frame in aea.adjacent_frame_labels(
-            store, frame_number, "Paste Mask Previous", "Paste Mask Next"
-        ):
-            other_index = (
-                None
-                if other_frame is None
-                else aea.nearest_face_index(
-                    aea._frame_faces(main_window, other_frame), *point
-                )
-            )
-            action = menu.addAction(label)
-            action.setEnabled(other_index is not None)
-            if other_frame is not None and other_index is not None:
-                handlers[action] = partial(
-                    paste_mask_from_frame,
-                    main_window,
-                    other_frame,
-                    other_index,
-                    frame_number,
-                    face_index,
-                )
-        for label, reset in (
-            ("Reset Mask (This Frame)", reset_mask_frame),
-            ("Reset Mask (From Here On)", reset_mask),
-        ):
-            reset_action = menu.addAction(label)
-            reset_action.setEnabled(has_mask)
-            handlers[reset_action] = partial(
-                reset, main_window, frame_number, face_index
-            )
-    reset_all_action = menu.addAction("Reset All Masks")
-    reset_all_action.setEnabled(store.mask_frame_count() > 0)
-    handlers[reset_all_action] = partial(reset_all_masks, main_window)
+        _sync_bar_buttons(main_window)
     return handlers
