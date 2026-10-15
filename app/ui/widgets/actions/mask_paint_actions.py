@@ -218,8 +218,13 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     bar.setStyleSheet(
         "#maskBrushBar { background: rgba(20, 20, 20, 200); border-radius: 4px; }"
     )
-    layout = QtWidgets.QHBoxLayout(bar)
-    layout.setContentsMargins(6, 4, 6, 4)
+    rows = QtWidgets.QVBoxLayout(bar)
+    rows.setContentsMargins(6, 4, 6, 4)
+    rows.setSpacing(4)
+    layout = QtWidgets.QHBoxLayout()
+    actions_row = QtWidgets.QHBoxLayout()
+    rows.addLayout(layout)
+    rows.addLayout(actions_row)
 
     def moved(point: QtCore.QPoint) -> None:
         bar.move(point)
@@ -252,16 +257,13 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     add_spin(
         "Opacity %", "opacity", 0, 100, "Overlay opacity (preview only, not the mask)."
     )
-    separator = QtWidgets.QFrame(bar)
-    separator.setFrameShape(QtWidgets.QFrame.Shape.VLine)
-    layout.addWidget(separator)
     bar_buttons: dict[str, QtWidgets.QToolButton] = {}
     for key, text, tip in BAR_ACTIONS:
         button = QtWidgets.QToolButton(bar)
         button.setText(text)
         button.setToolTip(tip)
         button.clicked.connect(partial(toolbar_action, main_window, key))
-        layout.addWidget(button)
+        actions_row.addWidget(button)
         bar_buttons[key] = button
     setattr(main_window, _BAR_BUTTONS_ATTR, bar_buttons)
 

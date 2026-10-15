@@ -168,6 +168,9 @@ def test_brush_bar_drags_within_viewer():
     main_window = SimpleNamespace(graphicsViewFrame=view)
     bar = mpa._build_brush_bar(main_window)
     handle = bar.findChild(mpa._DragHandle)
+    rows = bar.layout()
+    assert isinstance(rows, QtWidgets.QVBoxLayout) and rows.count() == 2
+    assert rows.itemAt(1).layout().count() == len(mpa.BAR_ACTIONS)
     assert handle is not None and bar.pos() == QtCore.QPoint(8, 8)
 
     def send(kind, x, y):
