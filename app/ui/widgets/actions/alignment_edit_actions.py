@@ -92,6 +92,17 @@ def nearest_face_index(faces: Sequence[dict], x: float, y: float) -> Optional[in
     return int(np.argmin(np.sum((centres - (x, y)) ** 2, axis=1)))
 
 
+def adjacent_frame_labels(
+    store: AlignmentStore, frame_number: int, previous_label: str, next_label: str
+) -> list[tuple[str, Optional[int]]]:
+    """Menu labels for the nearest stored frames before and after ``frame_number``."""
+    items: list[tuple[str, Optional[int]]] = []
+    for label, step in ((previous_label, -1), (next_label, 1)):
+        other = store.nearest_frame(frame_number, step)
+        items.append((label if other is None else f"{label} (frame {other})", other))
+    return items
+
+
 def current_frame_number(main_window: "MainWindow") -> int:
     return int(main_window.videoSeekSlider.value())
 
@@ -643,14 +654,17 @@ def add_context_menu_actions(
         handlers[copy_action] = partial(
             copy_face, main_window, frame_number, face_index
         )
-    for label, other_frame in (
-        ("Paste Previous", frame_number - 1),
-        ("Paste Next", frame_number + 1),
+    for label, other_frame in adjacent_frame_labels(
+        main_window.alignments, frame_number, "Paste Previous", "Paste Next"
     ):
-        other_index = nearest_face_index(_frame_faces(main_window, other_frame), *point)
+        other_index = (
+            None
+            if other_frame is None
+            else nearest_face_index(_frame_faces(main_window, other_frame), *point)
+        )
         action = menu.addAction(label)
         action.setEnabled(other_index is not None)
-        if other_index is not None:
+        if other_frame is not None and other_index is not None:
             handlers[action] = partial(
                 paste_from_frame,
                 main_window,

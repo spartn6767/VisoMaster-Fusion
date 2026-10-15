@@ -294,3 +294,17 @@ def test_clear_alignments_cache_button(monkeypatch, confirm, expect_cleared):
 
     assert (len(main_window.alignments) == 0) is expect_cleared
     assert bool(refreshed) is expect_cleared
+
+
+def test_nearest_frame_skips_gaps_and_empty_frames():
+    store = AlignmentStore()
+    face = {"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": [[0.2, 0.2]] * 5}
+    for n in (3, 10, 20):
+        store.put(n, [face], 1, 1, "sig")
+    store.put(15, [], 1, 1, "sig")
+    assert store.nearest_frame(10, -1) == 3
+    assert store.nearest_frame(10, 1) == 20
+    assert store.nearest_frame(12, 1) == 20
+    assert store.nearest_frame(12, -1) == 10
+    assert store.nearest_frame(3, -1) is None
+    assert store.nearest_frame(20, 1) is None

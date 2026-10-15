@@ -405,16 +405,19 @@ def add_context_menu_actions(
         handlers[paste_action] = partial(
             paste_mask, main_window, frame_number, face_index
         )
-        for label, other_frame in (
-            ("Paste Mask Previous", frame_number - 1),
-            ("Paste Mask Next", frame_number + 1),
+        for label, other_frame in aea.adjacent_frame_labels(
+            store, frame_number, "Paste Mask Previous", "Paste Mask Next"
         ):
-            other_index = aea.nearest_face_index(
-                aea._frame_faces(main_window, other_frame), *point
+            other_index = (
+                None
+                if other_frame is None
+                else aea.nearest_face_index(
+                    aea._frame_faces(main_window, other_frame), *point
+                )
             )
             action = menu.addAction(label)
             action.setEnabled(other_index is not None)
-            if other_index is not None:
+            if other_frame is not None and other_index is not None:
                 handlers[action] = partial(
                     paste_mask_from_frame,
                     main_window,

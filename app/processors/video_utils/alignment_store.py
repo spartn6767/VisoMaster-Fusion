@@ -264,6 +264,16 @@ class AlignmentStore:
         with self._lock:
             return sum(len(f.faces) for f in self._frames.values())
 
+    def nearest_frame(self, frame_number: int, step: int) -> Optional[int]:
+        """Closest frame with stored faces before (step < 0) or after (step > 0)."""
+        with self._lock:
+            frames = sorted(n for n, f in self._frames.items() if f.faces)
+        if step < 0:
+            i = bisect.bisect_left(frames, int(frame_number))
+            return frames[i - 1] if i > 0 else None
+        i = bisect.bisect_right(frames, int(frame_number))
+        return frames[i] if i < len(frames) else None
+
     def matches_media(self, media_path: Optional[str]) -> bool:
         with self._lock:
             return self.media_path is not None and _norm(self.media_path) == _norm(
