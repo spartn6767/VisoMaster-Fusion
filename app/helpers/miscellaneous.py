@@ -459,6 +459,25 @@ def find_best_target_match(
     return best_target, best_params_pd, highest_sim
 
 
+def resolve_assigned_target(
+    assigned_face_id: Any,
+    target_faces: Mapping[Any, Any],
+    face_parameters: Mapping[str, object],
+    default_params: Mapping[str, Any],
+) -> tuple[Any | None, ParametersDict | None]:
+    """The target a user pinned a face to, with its parameters; (None, None) if gone."""
+    if not assigned_face_id:
+        return None, None
+    for target_id, target_face in target_faces.items():
+        face_id_str = str(getattr(target_face, "face_id", target_id))
+        if face_id_str == str(assigned_face_id):
+            return target_face, ParametersDict(
+                copy_mapping_data(face_parameters.get(face_id_str)),
+                dict(default_params),
+            )
+    return None, None
+
+
 def count_issue_scan_frames(
     scan_ranges: Sequence[tuple[int, int]],
     dropped_frames: Collection[int],

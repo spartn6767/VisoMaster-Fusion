@@ -141,6 +141,8 @@ class AlignmentFace:
     kps_203: Optional[np.ndarray] = None
     embedding: Optional[np.ndarray] = None
     face_id: Optional[str] = None
+    # Target face the user pinned this face to; skips embedding matching.
+    assigned_face_id: Optional[str] = None
     source: str = SOURCE_SEQUENTIAL
     # Hand-painted (2, 256, 256) add/erase mask in canonical face space; all-zero
     # means "no manual mask from here on" for this face.
@@ -161,6 +163,7 @@ class AlignmentFace:
             "kps_203": _scale(self.kps_203, frame_w, frame_h),
             "embedding": None if self.embedding is None else self.embedding.copy(),
             "face_id": self.face_id,
+            "assigned_face_id": self.assigned_face_id,
             "source": self.source,
             "mask": None if self.mask is None else self.mask.copy(),
             "mask_skip": self.mask_skip,
@@ -189,6 +192,9 @@ class AlignmentFace:
             if embedding is None
             else np.asarray(embedding, dtype=np.float32).reshape(-1).copy(),
             face_id=None if face_id is None else str(face_id),
+            assigned_face_id=str(face["assigned_face_id"])
+            if face.get("assigned_face_id")
+            else None,
             source=str(face.get("source", source)),
             mask=as_mask(face.get("mask")),
             mask_skip=bool(face.get("mask_skip", False)),
@@ -581,6 +587,7 @@ class AlignmentStore:
         face_frame: list[int] = []
         sources: list[str] = []
         face_ids: list[str] = []
+        assigned_ids: list[str] = []
         bboxes: list[np.ndarray] = []
         kps5: list[np.ndarray] = []
         dense_offsets = [0]
@@ -600,6 +607,7 @@ class AlignmentStore:
                 face_frame.append(fi)
                 sources.append(face.source)
                 face_ids.append(face.face_id or "")
+                assigned_ids.append(face.assigned_face_id or "")
                 bboxes.append(face.bbox)
                 kps5.append(face.kps_5)
                 if face.kps_all is not None:
@@ -632,6 +640,7 @@ class AlignmentStore:
             "face_frame": np.asarray(face_frame, dtype=np.int64),
             "face_source": np.asarray(sources, dtype=np.str_),
             "face_id": np.asarray(face_ids, dtype=np.str_),
+            "assigned_face_id": np.asarray(assigned_ids, dtype=np.str_),
             "bbox": np.asarray(bboxes, dtype=np.float32).reshape(-1, 4),
             "kps_5": np.asarray(kps5, dtype=np.float32).reshape(-1, 5, 2),
             "kps_all_offsets": np.asarray(dense_offsets, dtype=np.int64),
@@ -668,6 +677,9 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
     emb_offsets = data["embedding_offsets"]
     kps203_index = data["kps_203_index"]
     has_masks = "mask_index" in data.files
+    assigned_ids = (
+        data["assigned_face_id"] if "assigned_face_id" in data.files else None
+    )
     mask_index = data["mask_index"] if has_masks else None
     masks = data["masks"] if has_masks else None
     mask_skip = data["mask_skip"] if "mask_skip" in data.files else None
@@ -676,6 +688,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
         e0, e1 = int(emb_offsets[i]), int(emb_offsets[i + 1])
         k = int(kps203_index[i])
         face_id = str(data["face_id"][i])
+        assigned_id = str(assigned_ids[i]) if assigned_ids is not None else ""
         m = int(mask_index[i]) if mask_index is not None else -1
         frames[int(frame_numbers[fi])].faces.append(
             AlignmentFace(
@@ -687,6 +700,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
                 if e1 > e0
                 else None,
                 face_id=face_id or None,
+                assigned_face_id=assigned_id or None,
                 source=str(data["face_source"][i]),
                 mask=as_mask(masks[m]) if masks is not None and m >= 0 else None,
                 mask_skip=bool(mask_skip[i]) if mask_skip is not None else False,

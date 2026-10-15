@@ -354,6 +354,50 @@ def redetect_frame(main_window: "MainWindow", frame_number: int) -> None:
     _refresh(main_window)
 
 
+def assign_target(
+    main_window: "MainWindow",
+    frame_number: int,
+    face_index: int,
+    target_face_id: Optional[str],
+) -> bool:
+    """Pins a face to a target face (None clears it); the frame becomes manual."""
+    if not main_window.alignments.update_face(
+        frame_number,
+        face_index,
+        1,
+        1,
+        assigned_face_id=target_face_id,
+        source=SOURCE_MANUAL,
+    ):
+        return False
+    _refresh(main_window)
+    return True
+
+
+def add_as_target_face(
+    main_window: "MainWindow", frame_number: int, face_index: int
+) -> Optional[str]:
+    """Creates a target face from this face and assigns the face to it."""
+    from app.ui.widgets.actions import card_actions
+
+    faces = _frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return None
+    face_id = card_actions.add_target_face_from_frame(
+        main_window, frame_number, faces[face_index]["kps_5"]
+    )
+    if face_id is None:
+        return None
+    assign_target(main_window, frame_number, face_index, face_id)
+    return face_id
+
+
+def _target_label(target: Any, number: Any) -> str:
+    label = getattr(target, "display_label", None)
+    text = label.text().strip() if label is not None else ""
+    return text or f"Target {number}"
+
+
 def reset_all_alignments(main_window: "MainWindow") -> int:
     """Discards every stored alignment (manual edits and masks included); returns the frame count."""
     frame_count = len(main_window.alignments)
@@ -587,6 +631,22 @@ def refresh_alignment_overlay(main_window: "MainWindow") -> None:
         )
         box.setPen(pen)
         scene.addItem(box)
+        assigned = face.get("assigned_face_id")
+        if assigned:
+            targets = getattr(main_window, "target_faces", None) or {}
+            target = targets.get(assigned)
+            number = list(targets).index(assigned) + 1 if target is not None else 0
+            tag = QtWidgets.QGraphicsSimpleTextItem(
+                f"-> {_target_label(target, number)}"
+                if target is not None
+                else "-> removed target",
+                box,
+            )
+            tag.setBrush(pen.color())
+            tag.setFlag(
+                QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations
+            )
+            tag.setPos(box.rect().left(), box.rect().top())
         items.append(box)
         for point_index, (px, py) in enumerate(
             np.asarray(face["kps_5"], dtype=np.float64)[:5]
@@ -719,6 +779,29 @@ def add_context_menu_actions(
     handlers[paste_action] = partial(paste_face, main_window, frame_number, face_index)
 
     if face_index is not None:
+        assigned = faces[face_index].get("assigned_face_id")
+        targets = getattr(main_window, "target_faces", None) or {}
+        target_menu = menu.addMenu("Assign to Target")
+        for n, (target_id, target) in enumerate(targets.items(), start=1):
+            target_face_id = str(getattr(target, "face_id", target_id))
+            action = target_menu.addAction(_target_label(target, n))
+            action.setCheckable(True)
+            action.setChecked(target_face_id == assigned)
+            handlers[action] = partial(
+                assign_target, main_window, frame_number, face_index, target_face_id
+            )
+        if not targets:
+            target_menu.addAction("No target faces").setEnabled(False)
+        if assigned:
+            target_menu.addSeparator()
+            clear_action = target_menu.addAction("Clear Assignment")
+            handlers[clear_action] = partial(
+                assign_target, main_window, frame_number, face_index, None
+            )
+        add_target_action = menu.addAction("Add as Target Face")
+        handlers[add_target_action] = partial(
+            add_as_target_face, main_window, frame_number, face_index
+        )
         delete_action = menu.addAction("Delete Face")
         handlers[delete_action] = partial(
             delete_face, main_window, frame_number, face_index

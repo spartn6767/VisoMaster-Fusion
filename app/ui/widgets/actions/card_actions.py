@@ -360,3 +360,40 @@ def find_target_faces(main_window: "MainWindow"):
     video_control_actions.update_scan_review_button_states(main_window)
 
     common_widget_actions.update_gpu_memory_progressbar(main_window)
+
+
+def add_target_face_from_frame(
+    main_window: "MainWindow", frame_number: int, kps_5_norm
+) -> str | None:
+    """Creates a target face from a face on a video frame (e.g. a manually drawn one)."""
+    video_processor = main_window.video_processor
+    media_capture = video_processor.media_capture
+    if video_processor.file_type != "video" or not media_capture:
+        return None
+    media_capture.set(cv2.CAP_PROP_POS_FRAMES, int(frame_number))
+    ret, frame = misc_helpers.read_frame(media_capture, video_processor.media_rotation)
+    if not ret or frame is None:
+        return None
+    height, width = frame.shape[:2]
+    img = (
+        torch.from_numpy(frame[..., ::-1].astype("uint8"))
+        .to(main_window.models_processor.device)
+        .permute(2, 0, 1)
+    )
+    model = str(main_window.control.get("RecognitionModelSelection", "arcface_128"))
+    kps = numpy.asarray(kps_5_norm, dtype=numpy.float32)[:5] * numpy.array(
+        [width, height], dtype=numpy.float32
+    )
+    embedding, cropped = main_window.function_worker.run_recognize_direct(
+        img, kps, "Auto", model
+    )
+    face_img = numpy.ascontiguousarray(cropped.cpu().numpy()[..., ::-1])
+    crop_h, crop_w, _ = face_img.shape
+    q_image = QtGui.QImage(
+        face_img.data, crop_w, crop_h, 3 * crop_w, QtGui.QImage.Format_BGR888
+    ).copy()
+    face_id = str(uuid.uuid1())
+    list_view_actions.add_media_thumbnail_to_target_faces_list(
+        main_window, face_img, {model: embedding}, q_image, face_id
+    )
+    return face_id

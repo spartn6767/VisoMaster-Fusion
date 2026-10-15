@@ -7,6 +7,7 @@ import torch
 from torchvision.transforms import v2
 import kornia.geometry.transform as kgm
 
+from app.helpers.miscellaneous import resolve_assigned_target
 from app.processors.models_data import landmark_point_counts
 from app.processors.video_utils.alignment_store import (
     ALL_SOURCES,
@@ -209,6 +210,26 @@ class StandardProcessor:
             out: list[np.ndarray] = []
             computed_masks[int(index)] = out
             return out
+
+        def match_target(fface: dict) -> tuple[Any, Any, float]:
+            """User-assigned target first, else the usual embedding match."""
+            if fface.get("assigned_face_id"):
+                with self.worker.lock:
+                    defaults = dict(self.worker.main_window.default_parameters.data)
+                assigned, assigned_params = resolve_assigned_target(
+                    fface["assigned_face_id"],
+                    target_faces_snapshot,
+                    self.worker.parameters,
+                    defaults,
+                )
+                if assigned is not None:
+                    return assigned, assigned_params, 1.0
+            return self.worker._find_best_target_match(
+                fface["embedding"],
+                control,
+                target_faces_snapshot,
+                is_sequentially_tracked=not self.worker.is_single_frame,
+            )
 
         def manual_mask_for(fface: dict, target: Any) -> np.ndarray | None:
             if not use_alignment_cache or alignment_store is None:
@@ -468,6 +489,9 @@ class StandardProcessor:
                         "swap_mask": None,
                         "matched_target": None,
                         "alignment_index": i if cached_face is not None else None,
+                        "assigned_face_id": cached_face.get("assigned_face_id")
+                        if cached_face is not None
+                        else None,
                     }
                 )
 
@@ -523,12 +547,7 @@ class StandardProcessor:
 
                     for fface in det_faces_data_for_display:
                         # FW-BUG-09: pass snapshot; cache result on fface for downstream reuse
-                        tgt, tgt_params, score = self.worker._find_best_target_match(
-                            fface["embedding"],
-                            control,
-                            target_faces_snapshot,
-                            is_sequentially_tracked=is_sequentially_tracked,
-                        )
+                        tgt, tgt_params, score = match_target(fface)
                         fface["matched_target"] = tgt
                         if tgt and tgt.face_id == target_face.face_id:
                             # FW-ARCH-FIX: Bypass strict UI threshold locally if rescued temporally
@@ -678,12 +697,7 @@ class StandardProcessor:
                     if stop_event.is_set():
                         break
                     # FW-BUG-09: pass the target_faces snapshot to avoid re-iterating live dict
-                    best_target, params, _ = self.worker._find_best_target_match(
-                        fface["embedding"],
-                        control,
-                        target_faces_snapshot,
-                        is_sequentially_tracked=is_sequentially_tracked,
-                    )
+                    best_target, params, _ = match_target(fface)
                     # FW-BUG-09: cache matched target so downstream helpers can reuse it
                     fface["matched_target"] = best_target
 

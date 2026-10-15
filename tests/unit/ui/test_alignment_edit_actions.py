@@ -315,3 +315,47 @@ def test_reset_all_alignments_needs_confirmation(main_window, monkeypatch):
     monkeypatch.setattr(aea, "_confirm_reset_all_alignments", lambda mw, n: True)
     assert aea.reset_all_alignments(main_window) == 2
     assert len(store) == 0
+
+
+def test_assign_target_pins_face_and_persists(main_window, tmp_path):
+    store = main_window.alignments
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    assert aea.assign_target(main_window, 1, 0, "target-1")
+    face = store.get(1, 1, 1, "other")[0]
+    assert face["assigned_face_id"] == "target-1"
+    assert face["source"] == SOURCE_MANUAL
+
+    path = str(tmp_path / "w.alignments.npz")
+    store.save(path)
+    loaded = AlignmentStore()
+    loaded.load(path)
+    assert loaded.get(1, 1, 1, None)[0]["assigned_face_id"] == "target-1"
+
+    assert aea.assign_target(main_window, 1, 0, None)
+    assert store.get(1, 1, 1, None)[0]["assigned_face_id"] is None
+    assert not aea.assign_target(main_window, 1, 5, "target-1")
+
+
+def test_add_as_target_face_creates_and_assigns(main_window, monkeypatch):
+    from app.ui.widgets.actions import card_actions
+
+    store = main_window.alignments
+    store.add_face(2, _face(10, 10, 30, 30), 100, 100)
+    calls = []
+    monkeypatch.setattr(
+        card_actions,
+        "add_target_face_from_frame",
+        lambda mw, frame, kps: calls.append((frame, len(kps))) or "new-target",
+    )
+    assert aea.add_as_target_face(main_window, 2, 0) == "new-target"
+    assert calls == [(2, 5)]
+    assert store.get(2, 1, 1, None)[0]["assigned_face_id"] == "new-target"
+
+
+def test_pasted_face_keeps_assignment(main_window):
+    store = main_window.alignments
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    aea.assign_target(main_window, 1, 0, "target-1")
+    store.put(3, [_face(12, 12, 32, 32)], 100, 100, "sig")
+    assert aea.paste_from_frame(main_window, 1, 0, 3, 0)
+    assert store.get(3, 1, 1, None)[0]["assigned_face_id"] == "target-1"
