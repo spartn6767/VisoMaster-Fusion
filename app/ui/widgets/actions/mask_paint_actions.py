@@ -72,6 +72,9 @@ def sync_mask_paint_ui(main_window: "MainWindow") -> None:
         if active:
             bar.raise_()
     refresh_mask_overlay(main_window)
+    from app.ui.widgets.actions import edit_toolbar_actions
+
+    edit_toolbar_actions.sync_edit_toolbar(main_window)
 
 
 def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:

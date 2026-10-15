@@ -158,6 +158,9 @@ def set_alignment_edit_mode(main_window: "MainWindow", enabled: bool) -> None:
             "Face Mask view, VR180 and Manual Rotation off.",
         )
     refresh_alignment_overlay(main_window)
+    from app.ui.widgets.actions import edit_toolbar_actions
+
+    edit_toolbar_actions.sync_edit_toolbar(main_window)
 
 
 def _refresh(main_window: "MainWindow") -> None:

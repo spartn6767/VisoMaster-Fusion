@@ -538,6 +538,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self._install_view_panel_toggle_actions()
         self._install_view_navigation_actions()
         self._install_media_controls_layout()
+        from app.ui.widgets.actions import edit_toolbar_actions
+
+        edit_toolbar_actions.install_edit_toolbar(self)
         self._install_compare_mask_toggle_buttons()
         self._install_media_controls_separator()
         self.verticalSpacer.changeSize(
