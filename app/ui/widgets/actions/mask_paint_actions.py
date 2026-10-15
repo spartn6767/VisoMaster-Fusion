@@ -23,6 +23,8 @@ _OVERLAY_ATTR = "_mask_paint_items"
 _STROKE_ATTR = "_mask_paint_stroke"
 _BRUSH_BAR_ATTR = "_mask_brush_bar"
 _CLIPBOARD_ATTR = "mask_clipboard"
+_ACTIVE_FACE_ATTR = "_mask_active_face"
+_BAR_BUTTONS_ATTR = "_mask_bar_buttons"
 _ADD_RGB = (0, 220, 120)
 _ERASE_RGB = (255, 60, 60)
 DEFAULT_BRUSH = {"size": 40, "feather": 6, "opacity": 45, "erase": False}
@@ -76,6 +78,97 @@ def sync_mask_paint_ui(main_window: "MainWindow") -> None:
     from app.ui.widgets.actions import edit_toolbar_actions
 
     edit_toolbar_actions.sync_edit_toolbar(main_window)
+
+
+BAR_ACTIONS = (
+    ("copy", "Copy", "Copy the selected face's mask."),
+    ("paste", "Paste", "Paste the copied mask onto the selected face."),
+    ("previous", "< Paste", "Paste the mask from the nearest earlier stored frame."),
+    ("next", "Paste >", "Paste the mask from the nearest later stored frame."),
+    ("reset_frame", "Reset Frame", "Computed mask on this frame only."),
+    ("reset_on", "Reset From Here", "Computed mask from this frame on."),
+    ("reset_all", "Reset All", "Remove every painted mask in this video."),
+)
+
+
+def set_active_face(main_window: "MainWindow", frame_number: int, face_index: int):
+    """The face the brush bar's actions apply to (last painted or right-clicked)."""
+    setattr(main_window, _ACTIVE_FACE_ATTR, (int(frame_number), int(face_index)))
+
+
+def active_face(main_window: "MainWindow") -> Optional[int]:
+    """Selected face on the shown frame; the only face if there is just one."""
+    frame_number = aea.current_frame_number(main_window)
+    faces = aea._frame_faces(main_window, frame_number)
+    chosen = getattr(main_window, _ACTIVE_FACE_ATTR, None)
+    if chosen is not None and chosen[0] == frame_number and chosen[1] < len(faces):
+        return chosen[1]
+    return 0 if len(faces) == 1 else None
+
+
+def _adjacent_source(
+    main_window: "MainWindow", frame_number: int, face_index: int, step: int
+) -> Optional[tuple[int, int]]:
+    other = main_window.alignments.nearest_frame(frame_number, step)
+    if other is None:
+        return None
+    x1, y1, x2, y2 = aea._frame_faces(main_window, frame_number)[face_index]["bbox"]
+    other_index = aea.nearest_face_index(
+        aea._frame_faces(main_window, other), (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    )
+    return None if other_index is None else (other, other_index)
+
+
+def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
+    """Runs a brush-bar action on the selected face of the shown frame."""
+    if key == "reset_all":
+        return reset_all_masks(main_window)
+    frame_number = aea.current_frame_number(main_window)
+    face_index = active_face(main_window)
+    result: Any = False
+    if face_index is None:
+        return result
+    if key == "copy":
+        result = copy_mask(main_window, frame_number, face_index)
+    elif key == "paste":
+        result = paste_mask(main_window, frame_number, face_index)
+    elif key == "reset_frame":
+        result = reset_mask_frame(main_window, frame_number, face_index)
+    elif key == "reset_on":
+        result = reset_mask(main_window, frame_number, face_index)
+    elif key in ("previous", "next"):
+        source = _adjacent_source(
+            main_window, frame_number, face_index, -1 if key == "previous" else 1
+        )
+        if source is not None:
+            result = paste_mask_from_frame(
+                main_window, *source, frame_number, face_index
+            )
+    _sync_bar_buttons(main_window)
+    return result
+
+
+def _sync_bar_buttons(main_window: "MainWindow") -> None:
+    buttons = getattr(main_window, _BAR_BUTTONS_ATTR, None)
+    if not buttons:
+        return
+    store = main_window.alignments
+    frame_number = aea.current_frame_number(main_window)
+    face_index = active_face(main_window)
+    enabled = {"reset_all": store.mask_frame_count() > 0}
+    if face_index is not None:
+        has_mask = store.effective_mask(frame_number, face_index) is not None
+        enabled.update(
+            copy=has_mask,
+            paste=getattr(main_window, _CLIPBOARD_ATTR, None) is not None,
+            previous=_adjacent_source(main_window, frame_number, face_index, -1)
+            is not None,
+            next=_adjacent_source(main_window, frame_number, face_index, 1) is not None,
+            reset_frame=has_mask,
+            reset_on=has_mask,
+        )
+    for key, button in buttons.items():
+        button.setEnabled(bool(enabled.get(key, False)))
 
 
 def clamp_bar_position(bar: QtWidgets.QWidget, point: QtCore.QPoint) -> QtCore.QPoint:
@@ -159,6 +252,19 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     add_spin(
         "Opacity %", "opacity", 0, 100, "Overlay opacity (preview only, not the mask)."
     )
+    separator = QtWidgets.QFrame(bar)
+    separator.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+    layout.addWidget(separator)
+    bar_buttons: dict[str, QtWidgets.QToolButton] = {}
+    for key, text, tip in BAR_ACTIONS:
+        button = QtWidgets.QToolButton(bar)
+        button.setText(text)
+        button.setToolTip(tip)
+        button.clicked.connect(partial(toolbar_action, main_window, key))
+        layout.addWidget(button)
+        bar_buttons[key] = button
+    setattr(main_window, _BAR_BUTTONS_ATTR, bar_buttons)
+
     bar.adjustSize()
     x, y = brush.get("bar_pos", (8, 8))
     bar.move(clamp_bar_position(bar, QtCore.QPoint(int(x), int(y))))
@@ -349,6 +455,7 @@ def overlay_rgba(
 
 def refresh_mask_overlay(main_window: "MainWindow") -> None:
     clear_mask_overlay(main_window)
+    _sync_bar_buttons(main_window)
     if not is_mask_paint_active(main_window):
         return
     rect = aea._pixmap_rect(main_window)
@@ -393,6 +500,7 @@ def handle_mouse_press(
     )
     if face_index is None:
         return True
+    set_active_face(main_window, frame_number, face_index)
     brush = brush_settings(main_window)
     shift = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier)
     erase = bool(brush["erase"]) != shift
@@ -486,6 +594,7 @@ def add_context_menu_actions(
         aea._frame_faces(main_window, frame_number), *point
     )
     if face_index is not None:
+        set_active_face(main_window, frame_number, face_index)
         has_mask = store.effective_mask(frame_number, face_index) is not None
         copy_action = menu.addAction("Copy Mask")
         copy_action.setEnabled(has_mask)

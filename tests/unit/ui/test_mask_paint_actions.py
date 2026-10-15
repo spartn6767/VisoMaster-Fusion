@@ -192,3 +192,22 @@ def test_brush_bar_drags_within_viewer():
 
     far = mpa.clamp_bar_position(bar, QtCore.QPoint(5000, -50))
     assert far == QtCore.QPoint(max(0, 1200 - bar.width()), 0)
+
+
+def test_brush_bar_actions_use_selected_face(main_window, monkeypatch):
+    frame = {"n": 1}
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: frame["n"])
+    store = main_window.alignments
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    assert mpa.active_face(main_window) == 0
+    assert mpa.toolbar_action(main_window, "reset_frame")
+    assert store.effective_mask(1, 0) is None and store.effective_mask(2, 0) is not None
+    assert mpa.toolbar_action(main_window, "previous")
+    assert store.effective_mask(1, 0) is not None
+    frame["n"] = 0
+    assert mpa.toolbar_action(main_window, "copy")
+    frame["n"] = 2
+    assert mpa.toolbar_action(main_window, "reset_on")
+    assert store.effective_mask(2, 0) is None
+    assert mpa.toolbar_action(main_window, "paste")
+    assert store.effective_mask(2, 0) is not None
