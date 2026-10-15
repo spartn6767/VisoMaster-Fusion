@@ -261,6 +261,11 @@ class AlignmentStore:
                 media_path
             )
 
+    def has_unsaved_changes(self) -> bool:
+        """True if frames are stored that no workspace/job save has written yet."""
+        with self._lock:
+            return bool(self._frames) and self._revision not in self._saved.values()
+
     # --- Mutation --------------------------------------------------------
     def clear(self) -> None:
         with self._lock:

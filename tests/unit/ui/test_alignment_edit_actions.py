@@ -208,3 +208,42 @@ def test_resize_face_stretches_landmarks_with_bbox(main_window):
     np.testing.assert_allclose(resized[0]["kps_5"][4], [40, 55], atol=1e-3)
     assert resized[0]["embedding"] is None
     assert not aea.resize_face(main_window, 0, 2, [0, 0, 1, 1])
+
+
+def test_has_unsaved_changes_tracks_saves(main_window, tmp_path):
+    store = main_window.alignments
+    assert not store.has_unsaved_changes()
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    assert store.has_unsaved_changes()
+    store.save(str(tmp_path / "w.alignments.npz"))
+    assert not store.has_unsaved_changes()
+    aea.delete_face(main_window, 1, 0)
+    store.put(2, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    assert store.has_unsaved_changes()
+
+
+@pytest.mark.parametrize(
+    "choice, expected, keeps_unsaved",
+    [("cancel", False, True), ("discard", True, True), ("save", True, False)],
+)
+def test_switch_target_media_prompt(
+    main_window, monkeypatch, tmp_path, choice, expected, keeps_unsaved
+):
+    store = main_window.alignments
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    asked = []
+    monkeypatch.setattr(
+        aea, "_ask_media_switch", lambda mw, n, name: asked.append((n, name)) or choice
+    )
+    monkeypatch.setattr(
+        aea, "_save_workspace", lambda mw: store.save(str(tmp_path / "w.npz"))
+    )
+
+    assert aea.confirm_switch_target_media(main_window, "/v.mp4")
+    assert aea.confirm_switch_target_media(main_window, "/other.mp4") is expected
+    assert asked == [(1, "v.mp4")]
+    assert store.has_unsaved_changes() is keeps_unsaved
+
+    with aea.suppress_media_switch_prompt(main_window):
+        assert aea.confirm_switch_target_media(main_window, "/other.mp4")
+    assert len(asked) == 1

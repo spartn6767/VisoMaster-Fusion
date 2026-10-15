@@ -21,6 +21,7 @@ from app.ui.widgets.actions import video_control_actions
 from app.ui.widgets.actions import graphics_view_actions
 from app.ui.widgets.actions import card_actions
 from app.ui.widgets.actions import save_load_actions
+from app.ui.widgets.actions import alignment_edit_actions
 import app.helpers.miscellaneous as misc_helpers
 from app.helpers.miscellaneous import get_video_rotation
 
@@ -338,6 +339,11 @@ class TargetMediaCardButton(CardButton):
         main_window = self.main_window
         if video_control_actions.block_if_issue_scan_active(
             main_window, "change target media"
+        ):
+            self._restore_pre_click_checked_state()
+            return
+        if not alignment_edit_actions.confirm_switch_target_media(
+            main_window, self.media_path
         ):
             self._restore_pre_click_checked_state()
             return

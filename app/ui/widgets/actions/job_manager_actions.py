@@ -23,6 +23,7 @@ from app.ui.widgets.actions import video_control_actions
 from app.ui.widgets.actions import control_actions
 from app.ui.widgets.actions import layout_actions
 from app.ui.widgets.actions import save_load_actions
+from app.ui.widgets.actions import alignment_edit_actions
 from app.ui.widgets import ui_workers
 from app.helpers.typing_helper import ParametersTypes, MarkerTypes
 import app.helpers.miscellaneous as misc_helpers
@@ -329,7 +330,8 @@ def _load_job_target_media(main_window: "MainWindow", data: dict):
     # Select the previously active media
     selected_media_id = data.get("selected_media_id", False)
     if selected_media_id and main_window.target_videos.get(selected_media_id):
-        main_window.target_videos[selected_media_id].click()
+        with alignment_edit_actions.suppress_media_switch_prompt(main_window):
+            main_window.target_videos[selected_media_id].click()
 
 
 def _load_job_input_faces(main_window: "MainWindow", data: dict):
@@ -1695,7 +1697,8 @@ def load_job_settings(main_window: "MainWindow", job_data: dict):
             and main_window.target_videos.get(selected_media_id)
         ):
             print(f"[INFO] Clicking target media: {selected_media_id}")
-            main_window.target_videos[selected_media_id].click()
+            with alignment_edit_actions.suppress_media_switch_prompt(main_window):
+                main_window.target_videos[selected_media_id].click()
         else:
             print(f"[WARN] Could not select media_id {selected_media_id} for job.")
             # Try to select the first available media
@@ -1704,7 +1707,8 @@ def load_job_settings(main_window: "MainWindow", job_data: dict):
                 print(
                     f"[WARN] Selecting first available media instead: {first_media.media_id}"
                 )
-                first_media.click()
+                with alignment_edit_actions.suppress_media_switch_prompt(main_window):
+                    first_media.click()
             else:
                 print("[ERROR] No target media loaded, cannot proceed.")
                 # This job will likely fail, but we must continue

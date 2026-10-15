@@ -21,6 +21,7 @@ from app.ui.widgets.actions import video_control_actions
 from app.ui.widgets.actions import control_actions
 from app.ui.widgets.actions import layout_actions
 from app.ui.widgets.actions import filter_actions
+from app.ui.widgets.actions import alignment_edit_actions
 from app.ui.widgets import ui_workers
 from app.helpers.typing_helper import ParametersTypes, MarkerTypes
 import app.helpers.miscellaneous as misc_helpers
@@ -744,7 +745,8 @@ def load_saved_workspace(
             # Select target media (Secured with .get to prevent KeyError on older workspaces)
             selected_media_id = data.get("selected_media_id", False)
             if selected_media_id and main_window.target_videos.get(selected_media_id):
-                main_window.target_videos[selected_media_id].click()
+                with alignment_edit_actions.suppress_media_switch_prompt(main_window):
+                    main_window.target_videos[selected_media_id].click()
 
             # Add input faces (imgs)
             input_media_paths, input_face_ids = [], []

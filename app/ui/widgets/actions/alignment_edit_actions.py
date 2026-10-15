@@ -6,14 +6,17 @@ empty area to add a missed face. Edits are stored as ``source: "manual"`` in
 embedding) on the next refresh.
 """
 
+import contextlib
+import os
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Sequence
 
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.processors.video_utils.alignment_store import (
     SOURCE_MANUAL,
+    AlignmentStore,
     alignments_cache_enabled,
 )
 
@@ -659,3 +662,77 @@ def add_context_menu_actions(
         redetect_action = menu.addAction("Re-detect Frame")
         handlers[redetect_action] = partial(redetect_frame, main_window, frame_number)
     return handlers
+
+
+# --- Target media switching ----------------------------------------------
+_SUPPRESS_SWITCH_PROMPT_ATTR = "_suppress_media_switch_prompt"
+
+
+@contextlib.contextmanager
+def suppress_media_switch_prompt(main_window: "MainWindow") -> Iterator[None]:
+    """Skips the unsaved-alignments prompt for programmatic media selection."""
+    previous = getattr(main_window, _SUPPRESS_SWITCH_PROMPT_ATTR, False)
+    setattr(main_window, _SUPPRESS_SWITCH_PROMPT_ATTR, True)
+    try:
+        yield
+    finally:
+        setattr(main_window, _SUPPRESS_SWITCH_PROMPT_ATTR, previous)
+
+
+def _ask_media_switch(main_window: "MainWindow", frame_count: int, name: str) -> str:
+    box = QtWidgets.QMessageBox(main_window)
+    box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
+    box.setWindowTitle("Unsaved Alignments")
+    box.setText(
+        f"Stored alignments for {frame_count} frames of '{name}' haven't been saved."
+    )
+    box.setInformativeText(
+        "Switching target media discards them, including manual edits."
+    )
+    save_button = box.addButton(
+        "Save Workspace && Switch", QtWidgets.QMessageBox.ButtonRole.AcceptRole
+    )
+    discard_button = box.addButton(
+        "Switch Without Saving", QtWidgets.QMessageBox.ButtonRole.DestructiveRole
+    )
+    cancel_button = box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+    box.setDefaultButton(cancel_button)
+    box.exec()
+    clicked = box.clickedButton()
+    if clicked is save_button:
+        return "save"
+    if clicked is discard_button:
+        return "discard"
+    return "cancel"
+
+
+def _save_workspace(main_window: "MainWindow") -> None:
+    from app.ui.widgets.actions import save_load_actions
+
+    save_load_actions.save_current_workspace(main_window)
+
+
+def confirm_switch_target_media(
+    main_window: "MainWindow", media_path: Optional[str]
+) -> bool:
+    """Asks before a media switch drops unsaved alignments; False means cancel."""
+    store = getattr(main_window, "alignments", None)
+    if not isinstance(store, AlignmentStore):
+        return True
+    if getattr(main_window, _SUPPRESS_SWITCH_PROMPT_ATTR, False) or getattr(
+        main_window, "is_batch_processing", False
+    ):
+        return True
+    if (
+        store.media_path is None
+        or store.matches_media(media_path)
+        or not store.has_unsaved_changes()
+    ):
+        return True
+    choice = _ask_media_switch(
+        main_window, len(store), os.path.basename(store.media_path)
+    )
+    if choice == "save":
+        _save_workspace(main_window)
+        return not store.has_unsaved_changes()
+    return choice == "discard"
