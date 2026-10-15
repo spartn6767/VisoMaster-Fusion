@@ -43,6 +43,7 @@ _OVERLAY_Z = 10.0
 _OVERLAY_ATTR = "_alignment_edit_items"
 _RUBBER_BAND_ATTR = "_alignment_rubber_band"
 _CLIPBOARD_ATTR = "alignment_clipboard"
+ACTIVE_FACE_ATTR = "_alignment_active_face"
 # Tag (item data key 0) for overlay pixmaps that must not be taken for the frame.
 OVERLAY_ITEM_TAG = "viewer_overlay"
 
@@ -101,6 +102,11 @@ def adjacent_frame_labels(
         other = store.nearest_frame(frame_number, step)
         items.append((label if other is None else f"{label} (frame {other})", other))
     return items
+
+
+def select_face(main_window: "MainWindow", frame_number: int, face_index: int) -> None:
+    """Marks the face the floating Edit Alignments bar acts on."""
+    setattr(main_window, ACTIVE_FACE_ATTR, (int(frame_number), int(face_index)))
 
 
 def current_frame_number(main_window: "MainWindow") -> int:
@@ -550,6 +556,7 @@ def _commit_box(
     face_index: int,
     offset: QtCore.QPointF,
 ) -> None:
+    select_face(main_window, frame_number, face_index)
     rect = _pixmap_rect(main_window)
     if rect is None:
         return
@@ -568,6 +575,7 @@ def _commit_resize(
     face_index: int,
     scene_rect: QtCore.QRectF,
 ) -> None:
+    select_face(main_window, frame_number, face_index)
     rect = _pixmap_rect(main_window)
     if rect is None:
         return
@@ -585,6 +593,7 @@ def _commit_handle(
     point_index: int,
     scene_pos: QtCore.QPointF,
 ) -> None:
+    select_face(main_window, frame_number, face_index)
     rect = _pixmap_rect(main_window)
     if rect is None:
         return
@@ -751,6 +760,8 @@ def add_context_menu_actions(
         else (0.5, 0.5)
     )
     face_index = face_index_at(faces, *point) if faces else None
+    if face_index is not None:
+        select_face(main_window, frame_number, face_index)
 
     copy_action = menu.addAction("Copy Face")
     copy_action.setEnabled(face_index is not None)

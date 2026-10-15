@@ -66,3 +66,51 @@ def test_toolbar_sits_above_media_buttons_and_tracks_state(monkeypatch):
     buttons["paint"].click()
     buttons["reset_alignments"].click()
     assert calls == [("edit", True), ("paint", False), "reset"]
+
+
+def test_floating_alignment_bar(monkeypatch):
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    monkeypatch.setattr(aea, "_refresh", lambda mw: None)
+    view = QtWidgets.QWidget()
+    view.resize(1400, 700)
+    slider = QtWidgets.QSlider()
+    slider.setRange(0, 10)
+    slider.setValue(2)
+    store = AlignmentStore()
+    store.bind_media("/v.mp4")
+    face = {"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": [[0.2, 0.2]] * 5}
+    store.put(1, [face], 1, 1, "sig")
+    store.put(2, [face, dict(face, bbox=[0.6, 0.1, 0.9, 0.5])], 1, 1, "sig")
+    main_window = SimpleNamespace(
+        graphicsViewFrame=view,
+        videoSeekSlider=slider,
+        alignments=store,
+        control={"AlignmentsCacheEnableToggle": True},
+        video_processor=SimpleNamespace(
+            file_type="video", media_path="/v.mp4", processing=False
+        ),
+        alignment_edit_enabled=True,
+        target_faces={},
+    )
+    eta.sync_alignment_bar(main_window)
+    bar = main_window._alignment_bar
+    buttons = main_window._alignment_bar_buttons
+    assert not bar.isHidden() and bar.layout().count() == 2
+    assert buttons["redetect"].isEnabled() and not buttons["copy"].isEnabled()
+
+    aea.select_face(main_window, 2, 1)
+    eta.sync_alignment_bar(main_window)
+    assert buttons["copy"].isEnabled() and buttons["previous"].isEnabled()
+    assert not buttons["next"].isEnabled()
+    assert eta.alignment_bar_action(main_window, "copy")
+    assert buttons["paste"].isEnabled()
+    assert eta.alignment_bar_action(main_window, "delete")
+    assert len(store.get(2, 1, 1, None)) == 1
+
+    menu = QtWidgets.QMenu()
+    eta.populate_assign_menu(main_window, menu)
+    assert [a.text() for a in menu.actions()] == ["No target faces"]
+
+    main_window.alignment_edit_enabled = False
+    eta.sync_alignment_bar(main_window)
+    assert bar.isHidden()
