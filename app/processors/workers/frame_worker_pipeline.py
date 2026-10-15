@@ -1704,6 +1704,7 @@ class PipelineProcessor:
         is_perspective_crop: bool = False,
         kv_map: dict[str, Any] | None = None,
         manual_mask: np.ndarray | None = None,
+        computed_mask_out: list[np.ndarray] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """
         Core function for face swapping. Handles:
@@ -3500,6 +3501,14 @@ class PipelineProcessor:
                 dtype=np.float32,
             )
             M_inv_np = M_inv_np @ scale_matrix
+
+        if computed_mask_out is not None:
+            # Lets Paint Mask show the computed mask under the user's strokes.
+            computed_mask_out.append(
+                manual_masks.crop_to_canonical(
+                    swap_mask[0].detach().float().cpu().numpy(), kps_5, M_inv_np
+                )
+            )
 
         if manual_mask is not None:
             # Hand-painted add/erase layers override the computed mask.

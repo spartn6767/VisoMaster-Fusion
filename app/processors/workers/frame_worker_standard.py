@@ -195,6 +195,21 @@ class StandardProcessor:
             )
         pending_alignment_faces: list[dict] | None = None
 
+        capture_computed_masks = (
+            use_alignment_cache
+            and self.worker.is_single_frame
+            and bool(getattr(self.worker.main_window, "mask_paint_enabled", False))
+        )
+        computed_masks: dict[int, list[np.ndarray]] = {}
+
+        def computed_mask_out(fface: dict) -> list[np.ndarray] | None:
+            index = fface.get("alignment_index")
+            if not capture_computed_masks or index is None:
+                return None
+            out: list[np.ndarray] = []
+            computed_masks[int(index)] = out
+            return out
+
         def manual_mask_for(fface: dict, target: Any) -> np.ndarray | None:
             if not use_alignment_cache or alignment_store is None:
                 return None
@@ -632,6 +647,7 @@ class StandardProcessor:
                                 dfm_model_name=params["DFMModelSelection"],
                                 kv_map=_reaging_kv,
                                 manual_mask=manual_mask_for(best_fface, target_face),
+                                computed_mask_out=computed_mask_out(best_fface),
                             )
                             if edit_button_is_checked_global and any(
                                 params[f]
@@ -777,6 +793,7 @@ class StandardProcessor:
                                     dfm_model_name=params["DFMModelSelection"],
                                     kv_map=_reaging_kv,
                                     manual_mask=manual_mask_for(fface, best_target),
+                                    computed_mask_out=computed_mask_out(fface),
                                 )
                             )
                             if edit_button_is_checked_global and any(
@@ -801,6 +818,13 @@ class StandardProcessor:
                                 f"[ERROR] Standard mode swap_core failed for a face: {e}"
                             )
                             continue
+
+        if capture_computed_masks:
+            self.worker.main_window.computed_masks = {
+                "media_path": self.worker.video_processor.media_path,
+                "frame": alignment_frame,
+                "faces": {i: out[0] for i, out in computed_masks.items() if out},
+            }
 
         if pending_alignment_faces is not None and alignment_store is not None:
             for pending, fface in zip(

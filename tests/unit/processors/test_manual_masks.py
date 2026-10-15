@@ -106,3 +106,13 @@ def test_masks_persist_and_old_files_without_masks_load(tmp_path):
     old = AlignmentStore()
     old.load(legacy_path)
     assert len(old) == 1 and old.effective_mask(0, 0) is None
+
+
+def test_crop_mask_round_trips_through_canonical_space():
+    frame_to_crop = np.array([[0.5, 0, -10], [0, 0.5, -5], [0, 0, 1]], dtype=float)
+    painted = mm.paint_stroke(None, [NOSE], KPS, radius=30)
+    crop = mm.mask_to_crop(painted, KPS, frame_to_crop, 512)[mm.ADD_LAYER]
+    canonical = mm.crop_to_canonical(crop, KPS, np.linalg.inv(frame_to_crop))
+    assert canonical.dtype == np.uint8 and canonical.shape == (256, 256)
+    assert canonical[CANON_NOSE] > 240
+    assert abs(int((canonical > 128).sum()) - int((painted[0] > 128).sum())) < 40

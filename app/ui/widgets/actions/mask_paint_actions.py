@@ -46,6 +46,9 @@ def set_mask_paint_mode(main_window: "MainWindow", enabled: bool) -> None:
     main_window.mask_paint_enabled = bool(enabled)
     if enabled:
         main_window.alignment_edit_enabled = False
+        aea.pause_for_editing(main_window)
+        # Re-render so the worker captures the computed masks for the overlay.
+        aea._refresh(main_window)
         if not aea.can_edit_alignments(main_window):
             QtWidgets.QMessageBox.information(
                 main_window,
@@ -246,31 +249,50 @@ def clear_mask_overlay(main_window: "MainWindow") -> None:
     setattr(main_window, _OVERLAY_ATTR, [])
 
 
+def computed_mask(
+    main_window: "MainWindow", frame_number: int, face_index: int
+) -> Optional[np.ndarray]:
+    """The worker's computed (settings) mask for a face on the shown frame, if captured."""
+    data = getattr(main_window, "computed_masks", None)
+    if not isinstance(data, dict) or data.get("frame") != frame_number:
+        return None
+    if not main_window.alignments.matches_media(data.get("media_path")):
+        return None
+    return data.get("faces", {}).get(face_index)
+
+
 def overlay_rgba(
     main_window: "MainWindow", frame_number: int, frame_w: int, frame_h: int
 ) -> Optional[np.ndarray]:
-    """Tinted RGBA image of the effective masks on a frame, or None if there are none."""
+    """Tinted RGBA preview of the final masks on a frame: the computed mask with
+    the painted add/erase applied (green), erased areas in red. None if empty."""
     store = main_window.alignments
-    add = np.zeros((frame_h, frame_w), dtype=np.float32)
-    erase = np.zeros((frame_h, frame_w), dtype=np.float32)
+    final = np.zeros((frame_h, frame_w), dtype=np.float32)
+    erased = np.zeros((frame_h, frame_w), dtype=np.float32)
     found = False
     for face_index, face in enumerate(aea._frame_faces(main_window, frame_number)):
-        mask = store.effective_mask(frame_number, face_index)
-        if mask is None:
+        painted = store.effective_mask(frame_number, face_index)
+        computed = computed_mask(main_window, frame_number, face_index)
+        if painted is None and computed is None:
             continue
-        layers = manual_masks.mask_to_frame(
-            mask, _face_kps_px(face, frame_w, frame_h), frame_w, frame_h
+        stack = np.zeros((3, manual_masks.MASK_SIZE, manual_masks.MASK_SIZE), np.uint8)
+        if painted is not None:
+            stack[:2] = painted
+        if computed is not None:
+            stack[2] = computed
+        add, erase, base = manual_masks.mask_to_frame(
+            stack, _face_kps_px(face, frame_w, frame_h), frame_w, frame_h
         )
-        np.maximum(add, layers[manual_masks.ADD_LAYER], out=add)
-        np.maximum(erase, layers[manual_masks.ERASE_LAYER], out=erase)
+        np.maximum(final, manual_masks.combine(base, add, erase), out=final)
+        np.maximum(erased, erase, out=erased)
         found = True
     if not found:
         return None
+    erased *= 1.0 - final
     opacity = float(brush_settings(main_window)["opacity"]) / 100.0
     rgba = np.zeros((frame_h, frame_w, 4), dtype=np.uint8)
-    use_erase = erase > add
-    rgba[..., :3] = np.where(use_erase[..., None], _ERASE_RGB, _ADD_RGB)
-    rgba[..., 3] = np.clip(np.maximum(add, erase) * opacity * 255.0, 0, 255)
+    rgba[..., :3] = np.where((erased > final)[..., None], _ERASE_RGB, _ADD_RGB)
+    rgba[..., 3] = np.clip(np.maximum(final, erased) * opacity * 255.0, 0, 255)
     return rgba
 
 

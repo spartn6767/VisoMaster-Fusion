@@ -89,3 +89,71 @@ def test_reset_mask_frame_only_affects_that_frame(main_window):
     assert mpa.reset_mask_frame(main_window, 1, 0)
     assert store.effective_mask(1, 0) is None
     assert np.array_equal(store.effective_mask(2, 0), painted)
+
+
+def test_overlay_shows_computed_mask_with_painted_edits(main_window):
+    computed = np.zeros((256, 256), dtype=np.uint8)
+    computed[60:200, 60:200] = 255
+    main_window.computed_masks = {
+        "media_path": "/v.mp4",
+        "frame": 0,
+        "faces": {0: computed},
+    }
+    rgba = mpa.overlay_rgba(main_window, 0, W, H)
+    nose = (int(NOSE[1]), int(NOSE[0]))
+    assert rgba is not None and rgba[nose][3] > 0 and rgba[nose][1] == 220
+    assert mpa.overlay_rgba(main_window, 1, W, H) is None
+
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=True)
+    rgba = mpa.overlay_rgba(main_window, 0, W, H)
+    assert tuple(rgba[nose][:3]) == (255, 60, 60)
+
+
+class _Button:
+    def __init__(self, checked, on_uncheck=None):
+        self.checked = checked
+        self.on_uncheck = on_uncheck
+
+    def isChecked(self):
+        return self.checked
+
+    def setChecked(self, value):
+        self.checked = value
+        if not value and self.on_uncheck:
+            self.on_uncheck()
+
+
+def test_edit_modes_pause_playback_without_prompt(main_window, monkeypatch):
+    vp = SimpleNamespace(file_type="video", media_path="/v.mp4", processing=True)
+    main_window.video_processor = vp
+    main_window.control = {"AlignmentsCacheEnableToggle": True}
+    main_window.buttonMediaRecord = _Button(False)
+    main_window.buttonMediaPlay = _Button(
+        True, lambda: setattr(vp, "processing", False)
+    )
+    monkeypatch.setattr(
+        aea.QtWidgets.QMessageBox,
+        "information",
+        lambda *a: pytest.fail("prompted"),
+    )
+    monkeypatch.setattr(aea, "refresh_alignment_overlay", lambda mw: None)
+    monkeypatch.setattr(mpa, "sync_mask_paint_ui", lambda mw: None)
+
+    mpa.set_mask_paint_mode(main_window, True)
+    assert not main_window.buttonMediaPlay.checked
+    assert mpa.is_mask_paint_active(main_window)
+
+    vp.processing = True
+    main_window.buttonMediaPlay.checked = True
+    aea.set_alignment_edit_mode(main_window, True)
+    assert aea.is_alignment_edit_active(main_window)
+    assert not main_window.mask_paint_enabled
+
+
+def test_recording_is_not_paused(main_window):
+    vp = SimpleNamespace(file_type="video", media_path="/v.mp4", processing=True)
+    main_window.video_processor = vp
+    main_window.buttonMediaRecord = _Button(True)
+    main_window.buttonMediaPlay = _Button(True)
+    aea.pause_for_editing(main_window)
+    assert main_window.buttonMediaPlay.checked and vp.processing

@@ -115,7 +115,7 @@ def paint_stroke(
 def warp_mask(
     mask: np.ndarray, matrix: np.ndarray, size: tuple[int, int]
 ) -> np.ndarray:
-    """Warps both layers with a 3x3 mask->target matrix; returns float32 in [0, 1]."""
+    """Warps every layer with a 3x3 mask->target matrix; returns float32 in [0, 1]."""
     w, h = int(size[0]), int(size[1])
     layers = [
         cv2.warpAffine(
@@ -126,7 +126,7 @@ def warp_mask(
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=0,
         )
-        for i in range(2)
+        for i in range(mask.shape[0])
     ]
     return np.stack(layers).astype(np.float32) / 255.0
 
@@ -148,6 +148,22 @@ def mask_to_crop(
         frame_to_mask_matrix(kps_5)
     )
     return warp_mask(mask, matrix, (crop_size, crop_size))
+
+
+def crop_to_canonical(
+    crop_mask: np.ndarray, kps_5: np.ndarray, crop_to_frame: np.ndarray
+) -> np.ndarray:
+    """A float [0, 1] face-crop mask in canonical mask space as uint8 (MASK_SIZE^2)."""
+    matrix = frame_to_mask_matrix(kps_5) @ np.asarray(crop_to_frame, dtype=np.float64)
+    src = np.clip(np.asarray(crop_mask, dtype=np.float32), 0.0, 1.0) * 255.0
+    return cv2.warpAffine(
+        src.astype(np.uint8),
+        matrix[:2],
+        (MASK_SIZE, MASK_SIZE),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )
 
 
 def combine(swap_mask: np.ndarray, add: np.ndarray, erase: np.ndarray) -> np.ndarray:

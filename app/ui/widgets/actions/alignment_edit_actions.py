@@ -126,11 +126,27 @@ def is_alignment_edit_active(main_window: "MainWindow") -> bool:
     )
 
 
+def pause_for_editing(main_window: "MainWindow") -> None:
+    """Pauses video playback (not a recording) so an edit mode can start."""
+    video_processor = main_window.video_processor
+    if (
+        not video_processor.processing
+        or video_processor.file_type != "video"
+        or main_window.buttonMediaRecord.isChecked()
+    ):
+        return
+    if main_window.buttonMediaPlay.isChecked():
+        main_window.buttonMediaPlay.setChecked(False)
+    else:
+        video_processor.stop_processing()
+
+
 def set_alignment_edit_mode(main_window: "MainWindow", enabled: bool) -> None:
     from app.ui.widgets.actions import mask_paint_actions
 
     main_window.alignment_edit_enabled = bool(enabled)
     if enabled:
+        pause_for_editing(main_window)
         main_window.mask_paint_enabled = False
         mask_paint_actions.sync_mask_paint_ui(main_window)
     if enabled and not can_edit_alignments(main_window):
