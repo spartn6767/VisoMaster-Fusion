@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import threading
 
+from app.helpers import miscellaneous as misc_helpers
+
 
 # --- Internal Sub-Processor Imports ---
 from app.processors.face_detectors import FaceDetectors
@@ -18,8 +20,9 @@ from app.processors.face_reaging import FaceReaging
 from app.processors.perform_recast import PerformRecast
 from app.processors.face_denoiser import FaceDenoiser
 from app.processors.frame_edits import FrameEdits
+from app.processors.hair_recolor import hair_probability, sample_hair_color
 from app.processors.models_data import arcface_mapping_model_dict
-from app.processors.utils import platform_support
+from app.processors.utils import faceutil, platform_support
 
 if TYPE_CHECKING:
     from app.processors.models_processor import ModelsProcessor
@@ -68,6 +71,8 @@ class FunctionWorker:
         self.perform_recast = PerformRecast(self.mp, self)
         self.face_denoiser = FaceDenoiser(self.mp, self)
         self.frame_edits = FrameEdits(self.mp, self)
+        self._input_hair_colors: Dict[tuple, Optional[Tuple[float, float, float]]] = {}
+        self._input_hair_lock = threading.Lock()
 
     def _get_session_lock(self, session: Any) -> threading.RLock:
         """Retrieves or creates a dedicated lock for a specific ORT Session."""
@@ -580,6 +585,54 @@ class FunctionWorker:
 
     def get_faceparser_logits(self, img_uint8_3x512x512: torch.Tensor) -> torch.Tensor:
         return self.face_masks._faceparser_logits(img_uint8_3x512x512)
+
+    def sample_input_hair_color(
+        self, image_path: str, parameters: dict, control: dict
+    ) -> Optional[Tuple[float, float, float]]:
+        """Hair color of an input face image, sampled once per image and crop."""
+        key = (
+            image_path,
+            float(parameters.get("FaceEditorCropScaleDecimalSlider", 2.5)),
+            float(parameters.get("FaceEditorVYRatioDecimalSlider", -0.125)),
+            str(control.get("DetectorModelSelection", "RetinaFace")),
+        )
+        with self._input_hair_lock:
+            if key in self._input_hair_colors:
+                return self._input_hair_colors[key]
+        color = None
+        try:
+            color = self._compute_input_hair_color(image_path, key[1], key[2], control)
+        except Exception as e:
+            print(f"[WARN] Sampling input hair color failed for {image_path}: {e}")
+        with self._input_hair_lock:
+            self._input_hair_colors[key] = color
+        return color
+
+    def _compute_input_hair_color(
+        self, image_path: str, crop_scale: float, vy_ratio: float, control: dict
+    ) -> Optional[Tuple[float, float, float]]:
+        frame = misc_helpers.read_image_file(image_path)
+        if frame is None:
+            return None
+        img = (
+            torch.from_numpy(np.ascontiguousarray(frame[..., ::-1]))
+            .to(self.mp.device)
+            .permute(2, 0, 1)
+        )
+        _, kpss_5, _ = self.run_detect(
+            img,
+            str(control.get("DetectorModelSelection", "RetinaFace")),
+            max_num=1,
+            score=float(control.get("DetectorScoreSlider", 50)) / 100.0,
+            input_size=(512, 512),
+        )
+        if kpss_5 is None or len(kpss_5) == 0:
+            return None
+        face_512, _, _ = faceutil.warp_face_by_face_landmark_x(
+            img, kpss_5[0], dsize=512, scale=crop_scale, vy_ratio=vy_ratio
+        )
+        prob = hair_probability(self.get_faceparser_logits(face_512))
+        return sample_hair_color(face_512, prob)
 
     def run_CLIPs(
         self, img: np.ndarray, CLIPText: str, CLIPAmount: float

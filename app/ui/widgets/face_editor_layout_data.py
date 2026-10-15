@@ -325,6 +325,14 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "requiredToggleValue": True,
             "help": "Natural recolors in Lab space, keeping each strand's highlights and shadows, with a soft hair mask. Overlay is the original flat color blend.",
         },
+        "HairMakeupUseInputColorToggle": {
+            "level": 2,
+            "label": "Use Input's Hair Color",
+            "default": False,
+            "parentToggle": "HairMakeupEnableToggle",
+            "requiredToggleValue": True,
+            "help": "Samples the hair color of the target's first assigned input face (from its source image) and uses it instead of the Red/Green/Blue sliders. Falls back to the sliders when the input image shows too little hair or the input is a merged embedding.",
+        },
         "HairMakeupRedSlider": {
             "level": 2,
             "label": "Red",

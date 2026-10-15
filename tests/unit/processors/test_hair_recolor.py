@@ -247,3 +247,60 @@ def test_cache_hit_skips_face_parser():
     assert calls == []
     assert not torch.equal(out, img)
     assert mask.max() > 0.9
+
+
+# ---------------------------------------------------------------------------
+# Use Input's Hair Color
+# ---------------------------------------------------------------------------
+
+
+def test_sample_hair_color_uses_median_of_confident_hair():
+    from app.processors.hair_recolor import sample_hair_color
+
+    img = torch.zeros(3, 64, 64, dtype=torch.uint8)
+    img[:, :32] = torch.tensor([150, 90, 40], dtype=torch.uint8).view(3, 1, 1)
+    img[:, 0, :4] = 255  # a few highlight pixels should not skew the median
+    img[:, 32:] = torch.tensor([220, 180, 160], dtype=torch.uint8).view(3, 1, 1)
+    prob = torch.zeros(1, 64, 64)
+    prob[:, :32] = 0.9
+    color = sample_hair_color(img, prob)
+    assert color is not None
+    assert all(abs(c - t) <= 3 for c, t in zip(color, (150, 90, 40)))
+
+
+def test_sample_hair_color_none_without_enough_hair():
+    from app.processors.hair_recolor import sample_hair_color
+
+    img = torch.full((3, 64, 64), 100, dtype=torch.uint8)
+    prob = torch.zeros(1, 64, 64)
+    prob[:, :5, :5] = 1.0
+    assert sample_hair_color(img, prob) is None
+
+
+def test_sample_input_hair_color_is_cached_per_image_and_crop():
+    import threading
+
+    from app.processors.workers.function_worker import FunctionWorker
+
+    worker = FunctionWorker.__new__(FunctionWorker)
+    worker._input_hair_colors = {}
+    worker._input_hair_lock = threading.Lock()
+    calls: list[tuple] = []
+
+    def compute(path, scale, vy, control):
+        calls.append((path, scale, vy))
+        return (10.0, 20.0, 30.0) if path == "a.png" else None
+
+    worker._compute_input_hair_color = compute
+    params = {
+        "FaceEditorCropScaleDecimalSlider": 2.5,
+        "FaceEditorVYRatioDecimalSlider": -0.125,
+    }
+    assert worker.sample_input_hair_color("a.png", params, {}) == (10.0, 20.0, 30.0)
+    assert worker.sample_input_hair_color("a.png", params, {}) == (10.0, 20.0, 30.0)
+    assert worker.sample_input_hair_color("b.png", params, {}) is None
+    assert worker.sample_input_hair_color("b.png", params, {}) is None
+    assert len(calls) == 2
+    params["FaceEditorCropScaleDecimalSlider"] = 3.0
+    worker.sample_input_hair_color("a.png", params, {})
+    assert len(calls) == 3

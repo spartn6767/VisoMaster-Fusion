@@ -265,6 +265,32 @@ class StandardProcessor:
                 ),
             )
 
+        def makeup_params_for(target: Any, params: Any, control: Any) -> dict:
+            data = params.data
+            if not (
+                data.get("HairMakeupEnableToggle", False)
+                and data.get("HairMakeupUseInputColorToggle", False)
+            ):
+                return data
+            input_faces = self.worker.main_window.input_faces
+            for input_id in getattr(target, "assigned_input_faces", None) or {}:
+                path = getattr(input_faces.get(input_id), "media_path", None)
+                if not path:
+                    continue
+                color = self.worker.function_worker.sample_input_hair_color(
+                    str(path), data, control
+                )
+                if color is None:
+                    break
+                r, g, b = (int(round(c)) for c in color)
+                return {
+                    **data,
+                    "HairMakeupRedSlider": r,
+                    "HairMakeupGreenSlider": g,
+                    "HairMakeupBlueSlider": b,
+                }
+            return data
+
         # --- DETECTION PHASE ---
         # The workers are now "Stateless Render Engines". They no longer track time or state.
         # They consume perfectly sequenced and EMA-smoothed detections from the Feeder thread.
@@ -709,7 +735,7 @@ class StandardProcessor:
                                 img = self.worker.function_worker.swap_edit_face_core_makeup(
                                     img,
                                     kps_for_makeup_best,
-                                    params.data,
+                                    makeup_params_for(target_face, params, control),
                                     control,
                                     hair_cache=hair_cache_for(
                                         best_fface, target_face, params
@@ -857,7 +883,7 @@ class StandardProcessor:
                                 img = self.worker.function_worker.swap_edit_face_core_makeup(
                                     img,
                                     kps_for_makeup,
-                                    params.data,
+                                    makeup_params_for(best_target, params, control),
                                     control,
                                     hair_cache=hair_cache_for(
                                         fface, best_target, params

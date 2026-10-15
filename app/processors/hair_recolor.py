@@ -152,3 +152,25 @@ def recolor_hair_lab(
     alpha = w * strength
     out = img_f[0] * (1.0 - alpha) + rgb * alpha
     return out.mul(255.0).round().clamp(0, 255).to(torch.uint8)
+
+
+@torch.no_grad()
+def sample_hair_color(
+    img: torch.Tensor,
+    prob: torch.Tensor,
+    min_prob: float = 0.6,
+    min_pixels: int = 200,
+) -> Optional[tuple[float, float, float]]:
+    """Typical RGB hair color of ``img`` [3,H,W] uint8 under ``prob`` [1,H,W].
+
+    Uses the per-channel Lab median of confident hair pixels so highlights and
+    shadows don't skew it. Returns None when too little hair is visible.
+    """
+    sel = prob[0].to(img.device) >= min_prob
+    if int(sel.sum()) < min_pixels:
+        return None
+    lab = kc.rgb_to_lab(img.float().div(255.0).unsqueeze(0))[0]
+    median = lab[:, sel].median(dim=1).values
+    rgb = kc.lab_to_rgb(median.view(1, 3, 1, 1))[0, :, 0, 0].clamp(0.0, 1.0)
+    r, g, b = (float(v) for v in rgb.mul(255.0).round().cpu())
+    return r, g, b
