@@ -62,6 +62,15 @@ class FaceMasks:
         Runs FaceParser on a 512x512 input.
         Returns: NATIVE 512x512 label tensor (Long).
         """
+        logits = self._faceparser_logits(img_uint8_3x512x512)
+        # Argmax to get class indices: (1, 19, 512, 512) -> (512, 512)
+        return logits.argmax(dim=1).squeeze(0).to(torch.long)
+
+    def _faceparser_logits(self, img_uint8_3x512x512: torch.Tensor) -> torch.Tensor:
+        """
+        Runs FaceParser on a 512x512 input.
+        Returns: raw (1, 19, 512, 512) float logits (all zeros if the model is missing).
+        """
         model_name = "FaceParser"
 
         # Preprocessing: [0..255] -> [0..1] -> Normalize (shared by all paths)
@@ -75,9 +84,11 @@ class FaceMasks:
             ort_session = self.models_processor.load_model(model_name)
 
         if not ort_session:
-            # Fallback empty labels
+            # Fallback: uniform logits, which argmax to background (label 0)
             return torch.zeros(
-                (512, 512), dtype=torch.long, device=img_uint8_3x512x512.device
+                (1, 19, 512, 512),
+                dtype=torch.float32,
+                device=img_uint8_3x512x512.device,
             )
 
         # Binding I/O
@@ -114,9 +125,7 @@ class FaceMasks:
             if is_lazy_build:
                 self.models_processor.hide_build_dialog.emit()
 
-        # Argmax to get class indices: (1, 19, 512, 512) -> (512, 512)
-        labels_512 = out.argmax(dim=1).squeeze(0).to(torch.long)
-        return labels_512
+        return out
 
     # --- Mouth Processing Logic ---
 

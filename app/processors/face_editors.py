@@ -13,6 +13,7 @@ from torchvision.transforms import v2
 
 from app.processors.models_data import models_dir
 from app.processors.utils import faceutil
+from app.processors.hair_recolor import recolor_hair_lab, soft_hair_mask
 
 if TYPE_CHECKING:
     from app.processors.models_processor import ModelsProcessor
@@ -688,9 +689,22 @@ class FaceEditors:
         device = img.device
 
         # 1. Get semantic labels from the face parser model.
-        labels = self._get_faceparser_labels_via_facemasks(
-            img
-        )  # Returns [256,256] long tensor
+        hair_natural = parameters.get("HairMakeupEnableToggle", False) and (
+            parameters.get("HairMakeupModeSelection", "Natural") == "Natural"
+        )
+        hair_mask = None
+        if hair_natural:
+            logits = self.function_worker.get_faceparser_logits(img)
+            labels = logits.argmax(dim=1).squeeze(0).to(torch.long)
+            hair_mask = soft_hair_mask(
+                logits,
+                threshold=parameters.get("HairMakeupMaskThresholdDecimalSlider", 0.5),
+                feather_px=parameters.get("HairMakeupEdgeSoftnessSlider", 4),
+            )
+        else:
+            labels = self._get_faceparser_labels_via_facemasks(
+                img
+            )  # Returns [512,512] long tensor
 
         # 2. Create a working copy of the image.
         out = img.clone()
@@ -716,14 +730,23 @@ class FaceEditors:
                 parameters["HairMakeupGreenSlider"],
                 parameters["HairMakeupBlueSlider"],
             ]
-            out = self.face_parser_makeup_direct_rgb(
-                out,
-                labels,
-                # FE-08: part must be a tuple, not a bare int
-                part=(17,),
-                color=color,
-                blend_factor=parameters["HairMakeupBlendAmountDecimalSlider"],
-            )
+            if hair_mask is not None:
+                out = recolor_hair_lab(
+                    out,
+                    hair_mask,
+                    color,
+                    strength=parameters.get("HairMakeupStrengthDecimalSlider", 0.8),
+                    lightness=parameters.get("HairMakeupLightnessDecimalSlider", 0.5),
+                )
+            else:
+                out = self.face_parser_makeup_direct_rgb(
+                    out,
+                    labels,
+                    # FE-08: part must be a tuple, not a bare int
+                    part=(17,),
+                    color=color,
+                    blend_factor=parameters["HairMakeupBlendAmountDecimalSlider"],
+                )
 
         if parameters.get("EyeBrowsMakeupEnableToggle", False):
             color = [
@@ -765,7 +788,7 @@ class FaceEditors:
             10: parameters.get("FaceMakeupEnableToggle", False),
             12: parameters.get("LipsMakeupEnableToggle", False),
             13: parameters.get("LipsMakeupEnableToggle", False),
-            17: parameters.get("HairMakeupEnableToggle", False),
+            17: parameters.get("HairMakeupEnableToggle", False) and not hair_natural,
         }
 
         combined_mask = torch.zeros_like(labels, dtype=torch.float32, device=device)
@@ -775,6 +798,9 @@ class FaceEditors:
                 continue
 
             combined_mask = torch.max(combined_mask, (labels == int(attr)).float())
+
+        if hair_mask is not None:
+            combined_mask = torch.max(combined_mask, hair_mask[0])
 
         combined_mask = combined_mask.unsqueeze(0)
 

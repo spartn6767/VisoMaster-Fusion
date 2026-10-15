@@ -569,6 +569,9 @@ class FunctionWorker:
     def get_faceparser_labels(self, img_uint8_3x512x512: torch.Tensor) -> torch.Tensor:
         return self.face_masks._faceparser_labels(img_uint8_3x512x512)
 
+    def get_faceparser_logits(self, img_uint8_3x512x512: torch.Tensor) -> torch.Tensor:
+        return self.face_masks._faceparser_logits(img_uint8_3x512x512)
+
     def run_CLIPs(
         self, img: np.ndarray, CLIPText: str, CLIPAmount: float
     ) -> np.ndarray:
