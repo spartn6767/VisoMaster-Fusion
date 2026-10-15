@@ -13,6 +13,7 @@ import kornia.enhance as ke
 import kornia.color as kc
 import kornia.geometry.transform as kgm
 
+from app.processors.video_utils import manual_masks
 from app.processors.utils import faceutil
 from app.processors.utils import platform_support
 
@@ -1702,6 +1703,7 @@ class PipelineProcessor:
         dfm_model_name: str | None = None,
         is_perspective_crop: bool = False,
         kv_map: dict[str, Any] | None = None,
+        manual_mask: np.ndarray | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
         """
         Core function for face swapping. Handles:
@@ -3484,6 +3486,30 @@ class PipelineProcessor:
             swap = t512_mask(swap)
             swap_mask = t512_mask(swap_mask)
 
+        M_inv_np = cast(np.ndarray, tform_original.inverse.params)
+
+        if alphaface_scale_val != 1.0:
+            # Scale the paste-back matrix to physically resize the canonically-generated AlphaFace
+            # without distorting the model's strict internal UNet priors.
+            scale_matrix = np.array(
+                [
+                    [alphaface_scale_val, 0.0, 256.0 * (1.0 - alphaface_scale_val)],
+                    [0.0, alphaface_scale_val, 256.0 * (1.0 - alphaface_scale_val)],
+                    [0.0, 0.0, 1.0],
+                ],
+                dtype=np.float32,
+            )
+            M_inv_np = M_inv_np @ scale_matrix
+
+        if manual_mask is not None:
+            # Hand-painted add/erase layers override the computed mask.
+            painted = torch.from_numpy(
+                manual_masks.mask_to_crop(
+                    manual_mask, kps_5, np.linalg.inv(M_inv_np), 512
+                )
+            ).to(device=swap_mask.device, dtype=swap_mask.dtype)
+            swap_mask = torch.maximum(swap_mask, painted[0:1]) * (1.0 - painted[1:2])
+
         swap = torch.mul(swap, swap_mask)
 
         # --- VIEW MODES ---
@@ -3523,21 +3549,6 @@ class PipelineProcessor:
         # --- OPTIMIZED UNTRANSFORM (PASTE BACK) USING KORNIA ---
         # Eliminates CPU bound calculations, manual slicing, and memory-heavy paddings.
         # Warps directly to the full frame resolution in one highly optimized GPU pass.
-
-        M_inv_np = cast(np.ndarray, tform_original.inverse.params)
-
-        if alphaface_scale_val != 1.0:
-            # Scale the paste-back matrix to physically resize the canonically-generated AlphaFace
-            # without distorting the model's strict internal UNet priors.
-            scale_matrix = np.array(
-                [
-                    [alphaface_scale_val, 0.0, 256.0 * (1.0 - alphaface_scale_val)],
-                    [0.0, alphaface_scale_val, 256.0 * (1.0 - alphaface_scale_val)],
-                    [0.0, 0.0, 1.0],
-                ],
-                dtype=np.float32,
-            )
-            M_inv_np = M_inv_np @ scale_matrix
 
         M_inv = (
             torch.from_numpy(M_inv_np[0:2])

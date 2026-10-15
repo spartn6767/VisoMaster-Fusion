@@ -43,6 +43,8 @@ _OVERLAY_Z = 10.0
 _OVERLAY_ATTR = "_alignment_edit_items"
 _RUBBER_BAND_ATTR = "_alignment_rubber_band"
 _CLIPBOARD_ATTR = "alignment_clipboard"
+# Tag (item data key 0) for overlay pixmaps that must not be taken for the frame.
+OVERLAY_ITEM_TAG = "viewer_overlay"
 
 
 def template_kps_for_bbox(bbox: Sequence[float]) -> np.ndarray:
@@ -114,7 +116,12 @@ def is_alignment_edit_active(main_window: "MainWindow") -> bool:
 
 
 def set_alignment_edit_mode(main_window: "MainWindow", enabled: bool) -> None:
+    from app.ui.widgets.actions import mask_paint_actions
+
     main_window.alignment_edit_enabled = bool(enabled)
+    if enabled:
+        main_window.mask_paint_enabled = False
+        mask_paint_actions.sync_mask_paint_ui(main_window)
     if enabled and not can_edit_alignments(main_window):
         QtWidgets.QMessageBox.information(
             main_window,
@@ -134,7 +141,10 @@ def _refresh(main_window: "MainWindow") -> None:
 
 def _pixmap_rect(main_window: "MainWindow") -> Optional[QtCore.QRectF]:
     for item in main_window.graphicsViewFrame.scene().items():
-        if isinstance(item, QtWidgets.QGraphicsPixmapItem):
+        if (
+            isinstance(item, QtWidgets.QGraphicsPixmapItem)
+            and item.data(0) != OVERLAY_ITEM_TAG
+        ):
             rect = item.sceneBoundingRect()
             return rect if rect.width() > 0 and rect.height() > 0 else None
     return None

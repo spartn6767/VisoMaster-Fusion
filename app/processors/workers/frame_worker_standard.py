@@ -195,6 +195,16 @@ class StandardProcessor:
             )
         pending_alignment_faces: list[dict] | None = None
 
+        def manual_mask_for(fface: dict, target: Any) -> np.ndarray | None:
+            if not use_alignment_cache or alignment_store is None:
+                return None
+            target_id = getattr(target, "face_id", None)
+            return alignment_store.effective_mask(
+                alignment_frame,
+                fface.get("alignment_index"),
+                None if target_id is None else str(target_id),
+            )
+
         # --- DETECTION PHASE ---
         # The workers are now "Stateless Render Engines". They no longer track time or state.
         # They consume perfectly sequenced and EMA-smoothed detections from the Feeder thread.
@@ -442,6 +452,7 @@ class StandardProcessor:
                         "original_face": None,
                         "swap_mask": None,
                         "matched_target": None,
+                        "alignment_index": i if cached_face is not None else None,
                     }
                 )
 
@@ -620,6 +631,7 @@ class StandardProcessor:
                                 control=control,
                                 dfm_model_name=params["DFMModelSelection"],
                                 kv_map=_reaging_kv,
+                                manual_mask=manual_mask_for(best_fface, target_face),
                             )
                             if edit_button_is_checked_global and any(
                                 params[f]
@@ -764,6 +776,7 @@ class StandardProcessor:
                                     control=control,
                                     dfm_model_name=params["DFMModelSelection"],
                                     kv_map=_reaging_kv,
+                                    manual_mask=manual_mask_for(fface, best_target),
                                 )
                             )
                             if edit_button_is_checked_global and any(

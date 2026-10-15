@@ -13,6 +13,7 @@ corrected face, which always win.
 
 from __future__ import annotations
 
+import bisect
 import copy
 import hashlib
 import json
@@ -23,6 +24,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import numpy as np
+
+from app.processors.video_utils.manual_masks import as_mask, is_empty
 
 ALIGNMENTS_FORMAT_VERSION = 1
 SIDECAR_SUFFIX = ".alignments.npz"
@@ -139,6 +142,9 @@ class AlignmentFace:
     embedding: Optional[np.ndarray] = None
     face_id: Optional[str] = None
     source: str = SOURCE_SEQUENTIAL
+    # Hand-painted (2, 256, 256) add/erase mask in canonical face space; all-zero
+    # means "no manual mask from here on" for this face.
+    mask: Optional[np.ndarray] = None
     # Manual bbox whose landmarks the worker still has to detect (not persisted).
     refine: bool = False
 
@@ -154,6 +160,7 @@ class AlignmentFace:
             "embedding": None if self.embedding is None else self.embedding.copy(),
             "face_id": self.face_id,
             "source": self.source,
+            "mask": None if self.mask is None else self.mask.copy(),
             "refine": self.refine,
         }
 
@@ -180,6 +187,7 @@ class AlignmentFace:
             else np.asarray(embedding, dtype=np.float32).reshape(-1).copy(),
             face_id=None if face_id is None else str(face_id),
             source=str(face.get("source", source)),
+            mask=as_mask(face.get("mask")),
             refine=bool(face.get("refine", False)),
         )
 
@@ -237,6 +245,7 @@ class AlignmentStore:
         self.media_path: Optional[str] = None
         self._revision = 0
         self._saved: dict[str, int] = {}
+        self._mask_index: tuple[int, list[int]] = (-1, [])
 
     # --- Introspection ---------------------------------------------------
     def __len__(self) -> int:
@@ -397,6 +406,71 @@ class AlignmentStore:
                     return None
             return [f.to_pixels(frame_w, frame_h) for f in frame.faces]
 
+    # --- Painted masks ---------------------------------------------------
+    def _mask_frames(self) -> list[int]:
+        if self._mask_index[0] != self._revision:
+            self._mask_index = (
+                self._revision,
+                sorted(
+                    n
+                    for n, frame in self._frames.items()
+                    if any(face.mask is not None for face in frame.faces)
+                ),
+            )
+        return self._mask_index[1]
+
+    def mask_frame_count(self) -> int:
+        with self._lock:
+            return len(self._mask_frames())
+
+    def effective_mask(
+        self,
+        frame_number: int,
+        face_index: Optional[int] = None,
+        face_id: Optional[str] = None,
+    ) -> Optional[np.ndarray]:
+        """The painted mask for a face: its own, else held from the latest earlier
+        frame with a mask for the same face_id. None if there is none or it was reset."""
+        frame_number = int(frame_number)
+        with self._lock:
+            frame = self._frames.get(frame_number)
+            if (
+                frame is not None
+                and face_index is not None
+                and 0 <= face_index < len(frame.faces)
+            ):
+                own = frame.faces[face_index]
+                if own.mask is not None:
+                    return None if is_empty(own.mask) else own.mask
+                if face_id is None:
+                    face_id = own.face_id
+            if face_id is None:
+                return None
+            masked = self._mask_frames()
+            for n in reversed(masked[: bisect.bisect_right(masked, frame_number)]):
+                if n == frame_number and face_index is not None:
+                    continue
+                held = self._frames.get(n)
+                if held is None:
+                    continue
+                for face in held.faces:
+                    if face.face_id == face_id and face.mask is not None:
+                        return None if is_empty(face.mask) else face.mask
+            return None
+
+    def clear_masks(self) -> int:
+        """Drops every painted mask; returns how many faces had one."""
+        with self._lock:
+            cleared = 0
+            for frame in self._frames.values():
+                for face in frame.faces:
+                    if face.mask is not None:
+                        face.mask = None
+                        cleared += 1
+            if cleared:
+                self._revision += 1
+            return cleared
+
     # --- Copy / persistence ---------------------------------------------
     def snapshot(self) -> "AlignmentStore":
         with self._lock:
@@ -498,6 +572,8 @@ class AlignmentStore:
         kps203: list[np.ndarray] = []
         emb_offsets = [0]
         embs: list[np.ndarray] = []
+        mask_index: list[int] = []
+        masks: list[np.ndarray] = []
 
         for fi, frame_number in enumerate(frame_numbers):
             frame = self._frames[frame_number]
@@ -523,6 +599,11 @@ class AlignmentStore:
                     emb_offsets.append(emb_offsets[-1] + len(face.embedding))
                 else:
                     emb_offsets.append(emb_offsets[-1])
+                if face.mask is not None:
+                    mask_index.append(len(masks))
+                    masks.append(face.mask)
+                else:
+                    mask_index.append(-1)
 
         meta = {"version": ALIGNMENTS_FORMAT_VERSION, "media_path": self.media_path}
         return {
@@ -548,6 +629,12 @@ class AlignmentStore:
                 if embs
                 else np.empty((0,), dtype=np.float16)
             ),
+            "mask_index": np.asarray(mask_index, dtype=np.int64),
+            "masks": (
+                np.stack(masks).astype(np.uint8)
+                if masks
+                else np.empty((0, 2, 256, 256), dtype=np.uint8)
+            ),
         }
 
 
@@ -560,11 +647,15 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
     dense_offsets = data["kps_all_offsets"]
     emb_offsets = data["embedding_offsets"]
     kps203_index = data["kps_203_index"]
+    has_masks = "mask_index" in data.files
+    mask_index = data["mask_index"] if has_masks else None
+    masks = data["masks"] if has_masks else None
     for i, fi in enumerate(data["face_frame"]):
         d0, d1 = int(dense_offsets[i]), int(dense_offsets[i + 1])
         e0, e1 = int(emb_offsets[i]), int(emb_offsets[i + 1])
         k = int(kps203_index[i])
         face_id = str(data["face_id"][i])
+        m = int(mask_index[i]) if mask_index is not None else -1
         frames[int(frame_numbers[fi])].faces.append(
             AlignmentFace(
                 bbox=data["bbox"][i].astype(np.float32),
@@ -576,6 +667,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
                 else None,
                 face_id=face_id or None,
                 source=str(data["face_source"][i]),
+                mask=as_mask(masks[m]) if masks is not None and m >= 0 else None,
             )
         )
     return frames
