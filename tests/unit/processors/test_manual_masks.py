@@ -88,8 +88,19 @@ def test_masks_persist_and_old_files_without_masks_load(tmp_path):
     loaded.load(path)
     assert np.array_equal(loaded.effective_mask(0, 0), mask)
 
+    store.update_face(0, 0, 1, 1, mask_skip=True)
+    store.save(path)
+    skipped = AlignmentStore()
+    skipped.load(path)
+    assert skipped.effective_mask(0, 0) is None
+    assert np.array_equal(skipped.effective_mask(1, face_id="A"), mask)
+
     with np.load(path) as data:
-        legacy = {k: data[k] for k in data.files if k not in ("mask_index", "masks")}
+        legacy = {
+            k: data[k]
+            for k in data.files
+            if k not in ("mask_index", "masks", "mask_skip")
+        }
     legacy_path = str(tmp_path / "old.alignments.npz")
     np.savez_compressed(legacy_path, **legacy)
     old = AlignmentStore()

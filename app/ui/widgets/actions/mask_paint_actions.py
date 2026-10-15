@@ -122,11 +122,18 @@ def set_mask(
     frame_number: int,
     face_index: int,
     mask: Optional[np.ndarray],
+    skip: bool = False,
 ) -> bool:
     """Stores a mask keyframe on a face; the frame becomes manual (pinned)."""
     store = main_window.alignments
     if not store.update_face(
-        frame_number, face_index, 1, 1, mask=mask, source=SOURCE_MANUAL
+        frame_number,
+        face_index,
+        1,
+        1,
+        mask=mask,
+        mask_skip=skip,
+        source=SOURCE_MANUAL,
     ):
         return False
     aea._refresh(main_window)
@@ -162,6 +169,18 @@ def apply_stroke(
 def reset_mask(main_window: "MainWindow", frame_number: int, face_index: int) -> bool:
     """Back to the computed mask for this face from this frame on."""
     return set_mask(main_window, frame_number, face_index, manual_masks.empty_mask())
+
+
+def reset_mask_frame(
+    main_window: "MainWindow", frame_number: int, face_index: int
+) -> bool:
+    """Computed mask on this frame only; later frames keep the mask they had."""
+    faces = aea._frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return False
+    return set_mask(
+        main_window, frame_number, face_index, faces[face_index].get("mask"), skip=True
+    )
 
 
 def reset_all_masks(main_window: "MainWindow") -> int:
@@ -426,11 +445,15 @@ def add_context_menu_actions(
                     frame_number,
                     face_index,
                 )
-        reset_action = menu.addAction("Reset Mask to Settings")
-        reset_action.setEnabled(has_mask)
-        handlers[reset_action] = partial(
-            reset_mask, main_window, frame_number, face_index
-        )
+        for label, reset in (
+            ("Reset Mask (This Frame)", reset_mask_frame),
+            ("Reset Mask (From Here On)", reset_mask),
+        ):
+            reset_action = menu.addAction(label)
+            reset_action.setEnabled(has_mask)
+            handlers[reset_action] = partial(
+                reset, main_window, frame_number, face_index
+            )
     reset_all_action = menu.addAction("Reset All Masks")
     reset_all_action.setEnabled(store.mask_frame_count() > 0)
     handlers[reset_all_action] = partial(reset_all_masks, main_window)

@@ -145,6 +145,8 @@ class AlignmentFace:
     # Hand-painted (2, 256, 256) add/erase mask in canonical face space; all-zero
     # means "no manual mask from here on" for this face.
     mask: Optional[np.ndarray] = None
+    # Use the computed mask on this frame only; a stored mask still holds forward.
+    mask_skip: bool = False
     # Manual bbox whose landmarks the worker still has to detect (not persisted).
     refine: bool = False
 
@@ -161,6 +163,7 @@ class AlignmentFace:
             "face_id": self.face_id,
             "source": self.source,
             "mask": None if self.mask is None else self.mask.copy(),
+            "mask_skip": self.mask_skip,
             "refine": self.refine,
         }
 
@@ -188,6 +191,7 @@ class AlignmentFace:
             face_id=None if face_id is None else str(face_id),
             source=str(face.get("source", source)),
             mask=as_mask(face.get("mask")),
+            mask_skip=bool(face.get("mask_skip", False)),
             refine=bool(face.get("refine", False)),
         )
 
@@ -450,6 +454,8 @@ class AlignmentStore:
                 and 0 <= face_index < len(frame.faces)
             ):
                 own = frame.faces[face_index]
+                if own.mask_skip:
+                    return None
                 if own.mask is not None:
                     return None if is_empty(own.mask) else own.mask
                 if face_id is None:
@@ -474,8 +480,9 @@ class AlignmentStore:
             cleared = 0
             for frame in self._frames.values():
                 for face in frame.faces:
-                    if face.mask is not None:
+                    if face.mask is not None or face.mask_skip:
                         face.mask = None
+                        face.mask_skip = False
                         cleared += 1
             if cleared:
                 self._revision += 1
@@ -583,6 +590,7 @@ class AlignmentStore:
         emb_offsets = [0]
         embs: list[np.ndarray] = []
         mask_index: list[int] = []
+        mask_skip: list[bool] = []
         masks: list[np.ndarray] = []
 
         for fi, frame_number in enumerate(frame_numbers):
@@ -609,6 +617,7 @@ class AlignmentStore:
                     emb_offsets.append(emb_offsets[-1] + len(face.embedding))
                 else:
                     emb_offsets.append(emb_offsets[-1])
+                mask_skip.append(face.mask_skip)
                 if face.mask is not None:
                     mask_index.append(len(masks))
                     masks.append(face.mask)
@@ -640,6 +649,7 @@ class AlignmentStore:
                 else np.empty((0,), dtype=np.float16)
             ),
             "mask_index": np.asarray(mask_index, dtype=np.int64),
+            "mask_skip": np.asarray(mask_skip, dtype=bool),
             "masks": (
                 np.stack(masks).astype(np.uint8)
                 if masks
@@ -660,6 +670,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
     has_masks = "mask_index" in data.files
     mask_index = data["mask_index"] if has_masks else None
     masks = data["masks"] if has_masks else None
+    mask_skip = data["mask_skip"] if "mask_skip" in data.files else None
     for i, fi in enumerate(data["face_frame"]):
         d0, d1 = int(dense_offsets[i]), int(dense_offsets[i + 1])
         e0, e1 = int(emb_offsets[i]), int(emb_offsets[i + 1])
@@ -678,6 +689,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
                 face_id=face_id or None,
                 source=str(data["face_source"][i]),
                 mask=as_mask(masks[m]) if masks is not None and m >= 0 else None,
+                mask_skip=bool(mask_skip[i]) if mask_skip is not None else False,
             )
         )
     return frames

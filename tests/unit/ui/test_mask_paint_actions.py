@@ -72,3 +72,20 @@ def test_copy_paste_and_paste_from_frame(main_window):
 
     assert mpa.paste_mask_from_frame(main_window, 1, 0, 2, 0)
     assert store.effective_mask(2, 0) is None
+
+
+def test_reset_mask_frame_only_affects_that_frame(main_window):
+    store = main_window.alignments
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    assert mpa.reset_mask_frame(main_window, 1, 0)
+    assert [store.effective_mask(n, 0) is not None for n in range(3)] == [
+        True,
+        False,
+        True,
+    ]
+
+    mpa.apply_stroke(main_window, 1, 0, [NOSE], W, H, erase=True)
+    painted = store.effective_mask(1, 0)
+    assert mpa.reset_mask_frame(main_window, 1, 0)
+    assert store.effective_mask(1, 0) is None
+    assert np.array_equal(store.effective_mask(2, 0), painted)
