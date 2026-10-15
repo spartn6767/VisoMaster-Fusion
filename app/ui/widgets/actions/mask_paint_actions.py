@@ -70,11 +70,52 @@ def sync_mask_paint_ui(main_window: "MainWindow") -> None:
     if bar is not None:
         bar.setVisible(active)
         if active:
+            bar.move(clamp_bar_position(bar, bar.pos()))
             bar.raise_()
     refresh_mask_overlay(main_window)
     from app.ui.widgets.actions import edit_toolbar_actions
 
     edit_toolbar_actions.sync_edit_toolbar(main_window)
+
+
+def clamp_bar_position(bar: QtWidgets.QWidget, point: QtCore.QPoint) -> QtCore.QPoint:
+    """Keeps the floating brush bar fully inside its parent (the viewer)."""
+    parent = bar.parentWidget()
+    if parent is None:
+        return point
+    max_x = max(0, parent.width() - bar.width())
+    max_y = max(0, parent.height() - bar.height())
+    return QtCore.QPoint(min(max(0, point.x()), max_x), min(max(0, point.y()), max_y))
+
+
+class _DragHandle(QtWidgets.QLabel):
+    """Grip that drags its brush bar around the viewer."""
+
+    def __init__(
+        self, bar: QtWidgets.QWidget, on_moved: Callable[[QtCore.QPoint], None]
+    ):
+        super().__init__("\u2261", bar)
+        self._bar = bar
+        self._on_moved = on_moved
+        self._grab: Optional[QtCore.QPoint] = None
+        self.setCursor(QtCore.Qt.CursorShape.SizeAllCursor)
+        self.setToolTip("Drag to move the brush bar.")
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._grab = event.position().toPoint()
+            event.accept()
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
+        if self._grab is None:
+            return
+        delta = event.position().toPoint() - self._grab
+        self._on_moved(clamp_bar_position(self._bar, self._bar.pos() + delta))
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+        self._grab = None
+        event.accept()
 
 
 def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
@@ -86,6 +127,12 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     )
     layout = QtWidgets.QHBoxLayout(bar)
     layout.setContentsMargins(6, 4, 6, 4)
+
+    def moved(point: QtCore.QPoint) -> None:
+        bar.move(point)
+        brush["bar_pos"] = (point.x(), point.y())
+
+    layout.addWidget(_DragHandle(bar, moved))
 
     erase = QtWidgets.QCheckBox("Erase (Shift)", bar)
     erase.setChecked(bool(brush["erase"]))
@@ -113,7 +160,8 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
         "Opacity %", "opacity", 0, 100, "Overlay opacity (preview only, not the mask)."
     )
     bar.adjustSize()
-    bar.move(8, 8)
+    x, y = brush.get("bar_pos", (8, 8))
+    bar.move(clamp_bar_position(bar, QtCore.QPoint(int(x), int(y))))
     setattr(main_window, _BRUSH_BAR_ATTR, bar)
     return bar
 

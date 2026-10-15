@@ -157,3 +157,38 @@ def test_recording_is_not_paused(main_window):
     main_window.buttonMediaPlay = _Button(True)
     aea.pause_for_editing(main_window)
     assert main_window.buttonMediaPlay.checked and vp.processing
+
+
+def test_brush_bar_drags_within_viewer():
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    view = QtWidgets.QWidget()
+    view.resize(1200, 600)
+    main_window = SimpleNamespace(graphicsViewFrame=view)
+    bar = mpa._build_brush_bar(main_window)
+    handle = bar.findChild(mpa._DragHandle)
+    assert handle is not None and bar.pos() == QtCore.QPoint(8, 8)
+
+    def send(kind, x, y):
+        button = QtCore.Qt.MouseButton.LeftButton
+        point = QtCore.QPointF(x, y)
+        handle.event(
+            QtGui.QMouseEvent(
+                kind,
+                point,
+                point,
+                button,
+                button,
+                QtCore.Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+    send(QtCore.QEvent.Type.MouseButtonPress, 2, 2)
+    send(QtCore.QEvent.Type.MouseMove, 52, 32)
+    send(QtCore.QEvent.Type.MouseButtonRelease, 52, 32)
+    assert bar.pos() == QtCore.QPoint(58, 38)
+    assert main_window.mask_brush["bar_pos"] == (58, 38)
+
+    far = mpa.clamp_bar_position(bar, QtCore.QPoint(5000, -50))
+    assert far == QtCore.QPoint(max(0, 1200 - bar.width()), 0)
