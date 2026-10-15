@@ -42,3 +42,8 @@ test_frames*/
 test_videos*/
 presets/
 temp_files/
+model_assets/osdface/unet.onnx.data
+model_assets/osdface/unet.onnx.data.zip.001
+model_assets/osdface/unet.onnx.data.zip.002
+workspaces/alignments-cache-test.alignments.npz
+last_workspace.alignments.npz
