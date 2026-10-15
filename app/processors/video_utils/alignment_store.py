@@ -17,6 +17,7 @@ import bisect
 import copy
 import hashlib
 import json
+import math
 import os
 import threading
 from collections.abc import Iterable, Mapping
@@ -29,6 +30,8 @@ from app.processors.video_utils.manual_masks import as_mask, is_empty
 
 ALIGNMENTS_FORMAT_VERSION = 1
 SIDECAR_SUFFIX = ".alignments.npz"
+# Side of the cached hair-probability map, in the 512px makeup crop.
+HAIR_PROB_SIZE = 128
 
 SOURCE_SEQUENTIAL = "sequential"
 SOURCE_SINGLE = "single"
@@ -113,6 +116,31 @@ def sidecar_path_for(json_path: str) -> str:
     return (root if ext.lower() == ".json" else json_path) + SIDECAR_SUFFIX
 
 
+def _as_hair_prob(value: Any) -> Optional[np.ndarray]:
+    if value is None:
+        return None
+    arr = np.asarray(value)
+    if arr.shape != (HAIR_PROB_SIZE, HAIR_PROB_SIZE):
+        return None
+    return np.ascontiguousarray(arr, dtype=np.uint8)
+
+
+def _matching_hair_prob(
+    frame: "FrameAlignments", face_key: Optional[str], index: int
+) -> Optional[np.ndarray]:
+    if face_key is None:
+        if 0 <= index < len(frame.faces):
+            return frame.faces[index].hair_prob
+        return None
+    for face in frame.faces:
+        if face.hair_prob is not None and face_key in (
+            face.assigned_face_id,
+            face.face_id,
+        ):
+            return face.hair_prob
+    return None
+
+
 def _as_points(value: Any) -> Optional[np.ndarray]:
     if value is None:
         return None
@@ -149,6 +177,9 @@ class AlignmentFace:
     mask: Optional[np.ndarray] = None
     # Use the computed mask on this frame only; a stored mask still holds forward.
     mask_skip: bool = False
+    # Cached face-parser hair probability (uint8, HAIR_PROB_SIZE square) in the
+    # makeup crop; only filled when hair mask stabilization is on.
+    hair_prob: Optional[np.ndarray] = None
     # Manual bbox whose landmarks the worker still has to detect (not persisted).
     refine: bool = False
 
@@ -167,6 +198,7 @@ class AlignmentFace:
             "source": self.source,
             "mask": None if self.mask is None else self.mask.copy(),
             "mask_skip": self.mask_skip,
+            "hair_prob": self.hair_prob,
             "refine": self.refine,
         }
 
@@ -198,6 +230,7 @@ class AlignmentFace:
             source=str(face.get("source", source)),
             mask=as_mask(face.get("mask")),
             mask_skip=bool(face.get("mask_skip", False)),
+            hair_prob=_as_hair_prob(face.get("hair_prob")),
             refine=bool(face.get("refine", False)),
         )
 
@@ -250,6 +283,7 @@ class AlignmentStore:
     """Thread-safe frame -> faces map shared by the feeder, workers and UI."""
 
     def __init__(self) -> None:
+        self.hair_crop: Optional[tuple[float, ...]] = None
         self._lock = threading.RLock()
         self._frames: dict[int, FrameAlignments] = {}
         self.media_path: Optional[str] = None
@@ -495,20 +529,104 @@ class AlignmentStore:
             return cleared
 
     # --- Copy / persistence ---------------------------------------------
+    # --- Cached hair masks ----------------------------------------------
+    def set_hair_prob(
+        self,
+        frame_number: int,
+        index: int,
+        prob: np.ndarray,
+        crop_key: Iterable[float],
+    ) -> bool:
+        """Caches one face's hair probability. A different makeup crop drops
+        every cached map, since they no longer line up."""
+        crop = tuple(float(v) for v in crop_key)
+        prob = _as_hair_prob(prob)  # type: ignore[assignment]
+        if prob is None:
+            return False
+        with self._lock:
+            frame = self._frames.get(int(frame_number))
+            if frame is None or not 0 <= index < len(frame.faces):
+                return False
+            if self.hair_crop != crop:
+                self._drop_hair_probs()
+                self.hair_crop = crop
+            frame.faces[index].hair_prob = prob
+            self._revision += 1
+            return True
+
+    def smoothed_hair_prob(
+        self,
+        frame_number: int,
+        index: int,
+        face_key: Optional[str],
+        crop_key: Iterable[float],
+        radius: int,
+    ) -> Optional[np.ndarray]:
+        """Gaussian-weighted average (0..1 float) of this face's cached hair
+        probability over +-radius frames. None if this frame has none cached."""
+        crop = tuple(float(v) for v in crop_key)
+        frame_number = int(frame_number)
+        with self._lock:
+            if self.hair_crop != crop:
+                return None
+            frame = self._frames.get(frame_number)
+            if frame is None or not 0 <= index < len(frame.faces):
+                return None
+            own = frame.faces[index]
+            if own.hair_prob is None:
+                return None
+            key = face_key if face_key is not None else own.face_id
+            total = own.hair_prob.astype(np.float32)
+            weight = 1.0
+            radius = max(0, int(radius))
+            sigma = max(radius / 2.0, 0.5)
+            for offset in range(1, radius + 1):
+                w = math.exp(-(offset * offset) / (2.0 * sigma * sigma))
+                for neighbour in (frame_number - offset, frame_number + offset):
+                    other = self._frames.get(neighbour)
+                    if other is None:
+                        continue
+                    prob = _matching_hair_prob(other, key, index)
+                    if prob is not None:
+                        total += w * prob
+                        weight += w
+            return total / (weight * 255.0)
+
+    def hair_frame_count(self) -> int:
+        with self._lock:
+            return sum(
+                1
+                for frame in self._frames.values()
+                if any(face.hair_prob is not None for face in frame.faces)
+            )
+
+    def clear_hair_probs(self) -> None:
+        with self._lock:
+            self._drop_hair_probs()
+            self._revision += 1
+
+    def _drop_hair_probs(self) -> None:
+        for frame in self._frames.values():
+            for face in frame.faces:
+                face.hair_prob = None
+
     def snapshot(self) -> "AlignmentStore":
         with self._lock:
             clone = AlignmentStore()
             clone._frames = copy.deepcopy(self._frames)
             clone.media_path = self.media_path
+            clone.hair_crop = self.hair_crop
             return clone
 
     def restore(self, other: "AlignmentStore") -> None:
         with other._lock:
             frames = copy.deepcopy(other._frames)
             media_path = other.media_path
+            hair_crop = other.hair_crop
         with self._lock:
             self._frames = frames
             self.media_path = media_path
+            self.hair_crop = hair_crop
             self._revision += 1
 
     def save(self, path: str) -> dict[str, Any]:
@@ -537,9 +655,11 @@ class AlignmentStore:
                     f"Alignments file version {meta.get('version')} is newer than supported"
                 )
             frames = _unpack(data)
+        hair_crop = meta.get("hair_crop")
         with self._lock:
             self._frames = frames
             self.media_path = meta.get("media_path")
+            self.hair_crop = tuple(float(v) for v in hair_crop) if hair_crop else None
             self._revision += 1
             self._saved[os.path.abspath(path)] = self._revision
 
@@ -599,6 +719,8 @@ class AlignmentStore:
         mask_index: list[int] = []
         mask_skip: list[bool] = []
         masks: list[np.ndarray] = []
+        hair_index: list[int] = []
+        hair_probs: list[np.ndarray] = []
 
         for fi, frame_number in enumerate(frame_numbers):
             frame = self._frames[frame_number]
@@ -631,8 +753,17 @@ class AlignmentStore:
                     masks.append(face.mask)
                 else:
                     mask_index.append(-1)
+                if face.hair_prob is not None:
+                    hair_index.append(len(hair_probs))
+                    hair_probs.append(face.hair_prob)
+                else:
+                    hair_index.append(-1)
 
-        meta = {"version": ALIGNMENTS_FORMAT_VERSION, "media_path": self.media_path}
+        meta = {
+            "version": ALIGNMENTS_FORMAT_VERSION,
+            "media_path": self.media_path,
+            "hair_crop": list(self.hair_crop) if self.hair_crop else None,
+        }
         return {
             "meta": np.array(json.dumps(meta)),
             "frame_numbers": np.asarray(frame_numbers, dtype=np.int64),
@@ -664,6 +795,12 @@ class AlignmentStore:
                 if masks
                 else np.empty((0, 2, 256, 256), dtype=np.uint8)
             ),
+            "hair_index": np.asarray(hair_index, dtype=np.int64),
+            "hair_probs": (
+                np.stack(hair_probs).astype(np.uint8)
+                if hair_probs
+                else np.empty((0, HAIR_PROB_SIZE, HAIR_PROB_SIZE), dtype=np.uint8)
+            ),
         }
 
 
@@ -683,6 +820,9 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
     mask_index = data["mask_index"] if has_masks else None
     masks = data["masks"] if has_masks else None
     mask_skip = data["mask_skip"] if "mask_skip" in data.files else None
+    has_hair = "hair_index" in data.files
+    hair_index = data["hair_index"] if has_hair else None
+    hair_probs = data["hair_probs"] if has_hair else None
     for i, fi in enumerate(data["face_frame"]):
         d0, d1 = int(dense_offsets[i]), int(dense_offsets[i + 1])
         e0, e1 = int(emb_offsets[i]), int(emb_offsets[i + 1])
@@ -690,6 +830,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
         face_id = str(data["face_id"][i])
         assigned_id = str(assigned_ids[i]) if assigned_ids is not None else ""
         m = int(mask_index[i]) if mask_index is not None else -1
+        h = int(hair_index[i]) if hair_index is not None else -1
         frames[int(frame_numbers[fi])].faces.append(
             AlignmentFace(
                 bbox=data["bbox"][i].astype(np.float32),
@@ -704,6 +845,9 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
                 source=str(data["face_source"][i]),
                 mask=as_mask(masks[m]) if masks is not None and m >= 0 else None,
                 mask_skip=bool(mask_skip[i]) if mask_skip is not None else False,
+                hair_prob=_as_hair_prob(hair_probs[h])
+                if hair_probs is not None and h >= 0
+                else None,
             )
         )
     return frames

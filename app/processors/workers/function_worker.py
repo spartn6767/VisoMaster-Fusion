@@ -454,15 +454,24 @@ class FunctionWorker:
         )
 
     def swap_edit_face_core_makeup(
-        self, img: torch.Tensor, kps: np.ndarray, parameters: dict, control: dict
+        self,
+        img: torch.Tensor,
+        kps: np.ndarray,
+        parameters: dict,
+        control: dict,
+        hair_cache: Any = None,
     ) -> torch.Tensor:
         """Thread-safe facade for applying face makeup edits."""
         return self.frame_edits.swap_edit_face_core_makeup(
-            img, kps, parameters, control
+            img, kps, parameters, control, hair_cache=hair_cache
         )
 
-    def apply_face_makeup(self, img: np.ndarray, parameters: dict) -> np.ndarray:
-        return self.face_editors.apply_face_makeup(img, parameters)
+    def apply_face_makeup(
+        self, img: Any, parameters: dict, hair_cache: Any = None
+    ) -> Any:
+        return self.face_editors.apply_face_makeup(
+            img, parameters, hair_cache=hair_cache
+        )
 
     def lp_motion_extractor(
         self, img: np.ndarray, face_editor_type: str = "Human-Face", **kwargs: Any

@@ -9,6 +9,7 @@ import kornia.geometry.transform as kgm
 
 from app.helpers.miscellaneous import resolve_assigned_target
 from app.processors.models_data import landmark_point_counts
+from app.processors.hair_recolor import HairMaskCache
 from app.processors.video_utils.alignment_store import (
     ALL_SOURCES,
     SEQUENTIAL_SOURCES,
@@ -239,6 +240,29 @@ class StandardProcessor:
                 alignment_frame,
                 fface.get("alignment_index"),
                 None if target_id is None else str(target_id),
+            )
+
+        def hair_cache_for(fface: dict, target: Any, params: Any) -> Any:
+            index = fface.get("alignment_index")
+            if (
+                not use_alignment_cache
+                or alignment_store is None
+                or index is None
+                or not params.get("HairMakeupStabilizeToggle", False)
+            ):
+                return None
+            store = alignment_store
+            face_index = int(index)
+            target_id = getattr(target, "face_id", None)
+            face_key = None if target_id is None else str(target_id)
+            radius = int(params.get("HairMakeupSmoothingSlider", 3))
+            return HairMaskCache(
+                load=lambda crop: store.smoothed_hair_prob(
+                    alignment_frame, face_index, face_key, crop, radius
+                ),
+                save=lambda prob, crop: store.set_hair_prob(
+                    alignment_frame, face_index, prob, crop
+                ),
             )
 
         # --- DETECTION PHASE ---
@@ -683,7 +707,13 @@ class StandardProcessor:
                                     else best_fface.get("kps_5")
                                 )
                                 img = self.worker.function_worker.swap_edit_face_core_makeup(
-                                    img, kps_for_makeup_best, params.data, control
+                                    img,
+                                    kps_for_makeup_best,
+                                    params.data,
+                                    control,
+                                    hair_cache=hair_cache_for(
+                                        best_fface, target_face, params
+                                    ),
                                 )
                         except Exception as e:
                             print(
@@ -825,7 +855,13 @@ class StandardProcessor:
                                     else fface.get("kps_5")
                                 )
                                 img = self.worker.function_worker.swap_edit_face_core_makeup(
-                                    img, kps_for_makeup, params.data, control
+                                    img,
+                                    kps_for_makeup,
+                                    params.data,
+                                    control,
+                                    hair_cache=hair_cache_for(
+                                        fface, best_target, params
+                                    ),
                                 )
                         except Exception as e:
                             print(

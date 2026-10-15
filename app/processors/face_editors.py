@@ -13,7 +13,14 @@ from torchvision.transforms import v2
 
 from app.processors.models_data import models_dir
 from app.processors.utils import faceutil
-from app.processors.hair_recolor import recolor_hair_lab, soft_hair_mask
+from app.processors.hair_recolor import (
+    HairMaskCache,
+    hair_probability,
+    mask_from_probability,
+    prob_from_cache,
+    prob_to_cache,
+    recolor_hair_lab,
+)
 
 if TYPE_CHECKING:
     from app.processors.models_processor import ModelsProcessor
@@ -672,7 +679,10 @@ class FaceEditors:
 
     @torch.no_grad()
     def apply_face_makeup(
-        self, img: torch.Tensor, parameters: dict
+        self,
+        img: torch.Tensor,
+        parameters: dict,
+        hair_cache: HairMaskCache | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Orchestrates the application of various makeup effects to a face image based on parameters.
@@ -693,18 +703,50 @@ class FaceEditors:
             parameters.get("HairMakeupModeSelection", "Natural") == "Natural"
         )
         hair_mask = None
+        labels = None
         if hair_natural:
-            logits = self.function_worker.get_faceparser_logits(img)
-            labels = logits.argmax(dim=1).squeeze(0).to(torch.long)
-            hair_mask = soft_hair_mask(
-                logits,
+            hair_prob = None
+            crop_key = (
+                float(parameters.get("FaceEditorCropScaleDecimalSlider", 0.0)),
+                float(parameters.get("FaceEditorVYRatioDecimalSlider", 0.0)),
+            )
+            size = (int(img.shape[-2]), int(img.shape[-1]))
+            cached = hair_cache.load(crop_key) if hair_cache is not None else None
+            if cached is not None:
+                hair_prob = prob_from_cache(cached, size, device)
+            else:
+                logits = self.function_worker.get_faceparser_logits(img)
+                labels = logits.argmax(dim=1).squeeze(0).to(torch.long)
+                hair_prob = hair_probability(logits)
+                if hair_cache is not None:
+                    hair_cache.save(prob_to_cache(hair_prob), crop_key)
+                    smoothed = hair_cache.load(crop_key)
+                    if smoothed is not None:
+                        hair_prob = prob_from_cache(smoothed, size, device)
+            hair_mask = mask_from_probability(
+                hair_prob,
                 threshold=parameters.get("HairMakeupMaskThresholdDecimalSlider", 0.5),
                 feather_px=parameters.get("HairMakeupEdgeSoftnessSlider", 4),
             )
-        else:
-            labels = self._get_faceparser_labels_via_facemasks(
-                img
-            )  # Returns [512,512] long tensor
+        if labels is None:
+            needs_parser = not hair_natural or any(
+                parameters.get(k, False)
+                for k in (
+                    "FaceMakeupEnableToggle",
+                    "EyeBrowsMakeupEnableToggle",
+                    "EyesMakeupEnableToggle",
+                    "LipsMakeupEnableToggle",
+                )
+            )
+            labels = (
+                self._get_faceparser_labels_via_facemasks(img)
+                if needs_parser
+                else torch.zeros(
+                    (int(img.shape[-2]), int(img.shape[-1])),
+                    dtype=torch.long,
+                    device=device,
+                )
+            )  # [512,512] long tensor
 
         # 2. Create a working copy of the image.
         out = img.clone()

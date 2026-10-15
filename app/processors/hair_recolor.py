@@ -2,14 +2,58 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from dataclasses import dataclass
+from typing import Callable, Optional, Sequence
 
 import kornia.color as kc
+import numpy as np
 import torch
 import torch.nn.functional as F
 
+from app.processors.video_utils.alignment_store import HAIR_PROB_SIZE
+
 HAIR_LABEL = 17
 MASK_RAMP_WIDTH = 0.3
+
+CropKey = tuple[float, ...]
+
+
+@dataclass
+class HairMaskCache:
+    """Per-face access to cached hair probabilities in the alignments store.
+
+    ``load`` returns the temporally smoothed 0..1 map (or None on a miss) and
+    ``save`` stores this frame's uint8 map, both keyed by the makeup crop.
+    """
+
+    load: Callable[[CropKey], Optional[np.ndarray]]
+    save: Callable[[np.ndarray, CropKey], object]
+
+
+@torch.no_grad()
+def hair_probability(logits: torch.Tensor) -> torch.Tensor:
+    """[1,19,H,W] parser logits -> [1,H,W] hair probability."""
+    return torch.softmax(logits.float(), dim=1)[:, HAIR_LABEL]
+
+
+@torch.no_grad()
+def prob_to_cache(prob: torch.Tensor) -> np.ndarray:
+    """[1,H,W] probability -> HAIR_PROB_SIZE square uint8 map for the store."""
+    small = F.interpolate(
+        prob.float().unsqueeze(0), size=(HAIR_PROB_SIZE, HAIR_PROB_SIZE), mode="area"
+    )[0, 0]
+    return small.mul(255.0).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+
+
+@torch.no_grad()
+def prob_from_cache(
+    cached: np.ndarray, size: tuple[int, int], device: torch.device | str
+) -> torch.Tensor:
+    """0..1 float map from the store -> [1,H,W] probability on ``device``."""
+    t = torch.from_numpy(np.ascontiguousarray(cached, dtype=np.float32)).to(device)
+    return F.interpolate(
+        t.view(1, 1, *t.shape), size=size, mode="bilinear", align_corners=False
+    )[0]
 
 
 @torch.no_grad()
@@ -18,12 +62,21 @@ def soft_hair_mask(
     threshold: float = 0.5,
     feather_px: float = 0.0,
 ) -> torch.Tensor:
-    """Turn [1,19,H,W] parser logits into a soft [1,H,W] hair mask in [0,1].
+    """Turn [1,19,H,W] parser logits into a soft [1,H,W] hair mask in [0,1]."""
+    return mask_from_probability(hair_probability(logits), threshold, feather_px)
 
-    Pixels ramp from 0 to 1 around ``threshold`` (hair probability) instead of
-    flipping on a hard argmax, which keeps edges and flyaways soft and stable.
+
+@torch.no_grad()
+def mask_from_probability(
+    probs: torch.Tensor,
+    threshold: float = 0.5,
+    feather_px: float = 0.0,
+) -> torch.Tensor:
+    """Soft [1,H,W] hair mask from a hair probability map.
+
+    Pixels ramp from 0 to 1 around ``threshold`` instead of flipping on a hard
+    argmax, which keeps edges and flyaways soft and stable.
     """
-    probs = torch.softmax(logits.float(), dim=1)[:, HAIR_LABEL]
     lo = max(0.0, threshold - MASK_RAMP_WIDTH / 2)
     hi = min(1.0, threshold + MASK_RAMP_WIDTH / 2)
     mask = ((probs - lo) / max(hi - lo, 1e-6)).clamp(0.0, 1.0)

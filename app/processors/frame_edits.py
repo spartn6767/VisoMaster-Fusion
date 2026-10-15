@@ -1496,7 +1496,7 @@ class FrameEdits:
 
             # 1. The call generates both the makeup image AND the exact mask from FaceParser
             out, mask_out = self.function_worker.apply_face_makeup(
-                original_face_512, parameters
+                original_face_512, parameters, hair_cache=kwargs.get("hair_cache")
             )
 
             # 2. Failsafe: Ensure the output tensor remains exactly 512x512
