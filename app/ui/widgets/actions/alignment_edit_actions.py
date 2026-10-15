@@ -269,6 +269,29 @@ def paste_face(
     copied = getattr(main_window, _CLIPBOARD_ATTR, None)
     if copied is None:
         return False
+    return _paste(main_window, frame_number, copied, replace_index)
+
+
+def paste_from_frame(
+    main_window: "MainWindow",
+    source_frame: int,
+    source_index: int,
+    frame_number: int,
+    replace_index: Optional[int] = None,
+) -> bool:
+    """Pastes a face stored on ``source_frame`` onto ``frame_number`` (clipboard untouched)."""
+    faces = _frame_faces(main_window, source_frame)
+    if not 0 <= source_index < len(faces):
+        return False
+    return _paste(main_window, frame_number, faces[source_index], replace_index)
+
+
+def _paste(
+    main_window: "MainWindow",
+    frame_number: int,
+    copied: dict,
+    replace_index: Optional[int],
+) -> bool:
     face = {
         key: value.copy() if isinstance(value, np.ndarray) else value
         for key, value in copied.items()
@@ -608,14 +631,21 @@ def add_context_menu_actions(
             copy_face, main_window, frame_number, face_index
         )
     for label, other_frame in (
-        ("Copy Previous", frame_number - 1),
-        ("Copy Next", frame_number + 1),
+        ("Paste Previous", frame_number - 1),
+        ("Paste Next", frame_number + 1),
     ):
         other_index = nearest_face_index(_frame_faces(main_window, other_frame), *point)
         action = menu.addAction(label)
         action.setEnabled(other_index is not None)
         if other_index is not None:
-            handlers[action] = partial(copy_face, main_window, other_frame, other_index)
+            handlers[action] = partial(
+                paste_from_frame,
+                main_window,
+                other_frame,
+                other_index,
+                frame_number,
+                face_index,
+            )
     paste_action = menu.addAction("Paste Face")
     paste_action.setEnabled(getattr(main_window, _CLIPBOARD_ATTR, None) is not None)
     handlers[paste_action] = partial(paste_face, main_window, frame_number, face_index)

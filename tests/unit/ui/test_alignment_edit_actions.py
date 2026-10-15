@@ -152,6 +152,23 @@ def test_paste_replaces_face_under_cursor(main_window):
     assert faces[0]["source"] == SOURCE_MANUAL
 
 
+def test_paste_from_previous_frame_leaves_clipboard_untouched(main_window):
+    store = main_window.alignments
+    store.put(4, [_face(10, 10, 30, 30, "7")], 100, 100, "sig")
+    store.put(5, [_face(60, 60, 80, 80)], 100, 100, "sig")
+
+    assert aea.paste_from_frame(main_window, 4, 0, 5, replace_index=0)
+    faces = store.get(5, 100, 100, "other")
+    assert faces is not None and len(faces) == 1
+    assert faces[0]["source"] == SOURCE_MANUAL and faces[0]["face_id"] == "7"
+    np.testing.assert_allclose(faces[0]["bbox"], [10, 10, 30, 30], atol=1e-3)
+    assert getattr(main_window, aea._CLIPBOARD_ATTR, None) is None
+
+    assert aea.paste_from_frame(main_window, 4, 0, 6)
+    assert len(store.get(6, 100, 100, "other") or []) == 1
+    assert not aea.paste_from_frame(main_window, 9, 0, 6)
+
+
 def test_paste_without_copy_does_nothing(main_window):
     assert not aea.paste_face(main_window, 0)
     assert len(main_window.alignments) == 0

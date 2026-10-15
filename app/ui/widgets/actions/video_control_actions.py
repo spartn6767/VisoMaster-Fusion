@@ -1474,6 +1474,12 @@ def remove_all_markers(main_window: "MainWindow"):
         main_window.job_marker_pairs.clear()
 
 
+def frame_skip_step(main_window: "MainWindow") -> int:
+    """Frames moved by the forward/rewind buttons and the seek-bar mouse wheel."""
+    spin_box = getattr(main_window, "frameSkipStepSpinBox", None)
+    return int(spin_box.value()) if spin_box is not None else 1
+
+
 def advance_video_slider_by_n_frames(main_window: "MainWindow", n=None):
     """
     Advances the seek slider forward by *n* frames (clamped to the last frame).
@@ -1484,7 +1490,7 @@ def advance_video_slider_by_n_frames(main_window: "MainWindow", n=None):
     video_processor = main_window.video_processor
     if video_processor.media_capture:
         if n is None:
-            n = int(main_window.control.get("FrameSkipStepSlider", 30))
+            n = frame_skip_step(main_window)
 
         current_position = int(main_window.videoSeekSlider.value())
         new_position = current_position + n
@@ -1529,7 +1535,7 @@ def rewind_video_slider_by_n_frames(main_window: "MainWindow", n=None):
     video_processor = main_window.video_processor
     if video_processor.media_capture:
         if n is None:
-            n = int(main_window.control.get("FrameSkipStepSlider", 30))
+            n = frame_skip_step(main_window)
 
         current_position = int(main_window.videoSeekSlider.value())
         new_position = current_position - n

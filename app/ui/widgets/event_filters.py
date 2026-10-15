@@ -80,7 +80,7 @@ class VideoSeekSliderEventFilter(QtCore.QObject):
                 return True  # Stop QT from applying default values
 
         elif event.type() == QtCore.QEvent.Type.Wheel:
-            # Intercept mousewheel to use FrameSkipStepSlider logic
+            # Intercept mousewheel to step by the frame skip step box
             delta = event.angleDelta().y()
             if delta > 0:
                 # If wheel up (Advance)

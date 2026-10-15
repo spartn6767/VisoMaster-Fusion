@@ -349,6 +349,21 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.frameRewindButton.clicked.connect(
             partial(video_control_actions.rewind_video_slider_by_n_frames, self)
         )
+        self.frameSkipStepSpinBox = QtWidgets.QSpinBox(self.mediaLayout)
+        self.frameSkipStepSpinBox.setObjectName("frameSkipStepSpinBox")
+        self.frameSkipStepSpinBox.setRange(1, 300)
+        self.frameSkipStepSpinBox.setValue(1)
+        self.frameSkipStepSpinBox.setToolTip(
+            "Frame Skip Step: frames moved by the forward/rewind buttons and the mouse wheel on the seek bar."
+        )
+        self.horizontalLayoutMediaButtons.insertWidget(
+            self.horizontalLayoutMediaButtons.indexOf(self.frameAdvanceButton) + 1,
+            self.frameSkipStepSpinBox,
+        )
+        self.frameSkipStepSpinBox.valueChanged.connect(
+            partial(control_actions.update_video_slider_step, self)
+        )
+        control_actions.update_video_slider_step(self, 1)
 
         # JOB MANAGER changes addMarkerButton connection
         self.addMarkerButton.clicked.connect(
