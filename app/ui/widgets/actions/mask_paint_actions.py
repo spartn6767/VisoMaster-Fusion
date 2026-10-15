@@ -578,10 +578,6 @@ def add_context_menu_actions(
     main_window: "MainWindow", menu: QtWidgets.QMenu, scene_pos: QtCore.QPointF
 ) -> dict[QtGui.QAction, Callable[[], Any]]:
     handlers: dict[QtGui.QAction, Callable[[], Any]] = {}
-    toggle = menu.addAction("Paint Mask")
-    toggle.setCheckable(True)
-    toggle.setChecked(bool(getattr(main_window, "mask_paint_enabled", False)))
-    handlers[toggle] = lambda: set_mask_paint_mode(main_window, toggle.isChecked())
     if not is_mask_paint_active(main_window):
         return handlers
     frame_number = aea.current_frame_number(main_window)

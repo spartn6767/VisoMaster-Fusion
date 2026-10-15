@@ -731,14 +731,10 @@ def handle_mouse_release(
 def add_context_menu_actions(
     main_window: "MainWindow", menu: QtWidgets.QMenu, scene_pos: QtCore.QPointF
 ) -> dict[QtGui.QAction, Callable[[], Any]]:
-    """Adds the Edit Alignments toggle (right-click also selects the face for the
-    floating bar); returns handlers keyed by action."""
+    """Right-click selects the face under the cursor for the floating bar.
+
+    Adds no menu entries (the mode toggles live on the edit toolbar)."""
     handlers: dict[QtGui.QAction, Callable[[], Any]] = {}
-    menu.addSeparator()
-    toggle = menu.addAction("Edit Alignments")
-    toggle.setCheckable(True)
-    toggle.setChecked(bool(getattr(main_window, "alignment_edit_enabled", False)))
-    handlers[toggle] = lambda: set_alignment_edit_mode(main_window, toggle.isChecked())
     if not is_alignment_edit_active(main_window):
         return handlers
     frame_number = current_frame_number(main_window)
