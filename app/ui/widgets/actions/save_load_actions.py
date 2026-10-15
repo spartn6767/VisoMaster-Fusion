@@ -684,6 +684,8 @@ def load_saved_workspace(
     if not (isinstance(data_filename, str) and Path(data_filename).is_file()):
         data_filename = False
     if data_filename:
+        if not alignment_edit_actions.confirm_load_workspace(main_window):
+            return
         with open(data_filename, "r", encoding="utf-8") as data_file:
             data = json.load(data_file)
         try:

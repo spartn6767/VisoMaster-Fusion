@@ -233,7 +233,9 @@ def test_switch_target_media_prompt(
     store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
     asked = []
     monkeypatch.setattr(
-        aea, "_ask_media_switch", lambda mw, n, name: asked.append((n, name)) or choice
+        aea,
+        "_ask_discard_alignments",
+        lambda mw, n, name, verb, text: asked.append((n, name, verb)) or choice,
     )
     monkeypatch.setattr(
         aea, "_save_workspace", lambda mw: store.save(str(tmp_path / "w.npz"))
@@ -241,9 +243,62 @@ def test_switch_target_media_prompt(
 
     assert aea.confirm_switch_target_media(main_window, "/v.mp4")
     assert aea.confirm_switch_target_media(main_window, "/other.mp4") is expected
-    assert asked == [(1, "v.mp4")]
+    assert asked == [(1, "v.mp4", "Switch")]
     assert store.has_unsaved_changes() is keeps_unsaved
 
     with aea.suppress_media_switch_prompt(main_window):
         assert aea.confirm_switch_target_media(main_window, "/other.mp4")
     assert len(asked) == 1
+
+
+@pytest.mark.parametrize(
+    "choice, expected, keeps_unsaved",
+    [("cancel", False, True), ("discard", True, True), ("save", True, False)],
+)
+def test_load_workspace_prompt(
+    main_window, monkeypatch, tmp_path, choice, expected, keeps_unsaved
+):
+    store = main_window.alignments
+    asked = []
+    monkeypatch.setattr(
+        aea,
+        "_ask_discard_alignments",
+        lambda mw, n, name, verb, text: asked.append((n, name, verb)) or choice,
+    )
+    monkeypatch.setattr(
+        aea, "_save_workspace", lambda mw: store.save(str(tmp_path / "w.npz"))
+    )
+
+    assert aea.confirm_load_workspace(main_window)
+    assert asked == []
+
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    assert aea.confirm_load_workspace(main_window) is expected
+    assert asked == [(1, "v.mp4", "Load")]
+    assert store.has_unsaved_changes() is keeps_unsaved
+
+    with aea.suppress_media_switch_prompt(main_window):
+        assert aea.confirm_load_workspace(main_window)
+    assert len(asked) == 1
+
+
+def test_load_saved_workspace_stops_when_prompt_cancelled(monkeypatch, tmp_path):
+    from app.ui.widgets.actions import save_load_actions
+
+    workspace = tmp_path / "w.json"
+    workspace.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        save_load_actions.video_control_actions,
+        "block_if_issue_scan_active",
+        lambda *a: False,
+    )
+    monkeypatch.setattr(aea, "confirm_load_workspace", lambda mw: False)
+
+    def fail(*args):
+        raise AssertionError("workspace state was cleared")
+
+    monkeypatch.setattr(
+        save_load_actions.list_view_actions, "clear_stop_loading_input_media", fail
+    )
+
+    save_load_actions.load_saved_workspace(SimpleNamespace(), str(workspace))

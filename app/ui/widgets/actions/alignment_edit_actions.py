@@ -679,21 +679,25 @@ def suppress_media_switch_prompt(main_window: "MainWindow") -> Iterator[None]:
         setattr(main_window, _SUPPRESS_SWITCH_PROMPT_ATTR, previous)
 
 
-def _ask_media_switch(main_window: "MainWindow", frame_count: int, name: str) -> str:
+def _ask_discard_alignments(
+    main_window: "MainWindow",
+    frame_count: int,
+    name: str,
+    verb: str,
+    consequence: str,
+) -> str:
     box = QtWidgets.QMessageBox(main_window)
     box.setIcon(QtWidgets.QMessageBox.Icon.Warning)
     box.setWindowTitle("Unsaved Alignments")
     box.setText(
         f"Stored alignments for {frame_count} frames of '{name}' haven't been saved."
     )
-    box.setInformativeText(
-        "Switching target media discards them, including manual edits."
-    )
+    box.setInformativeText(consequence)
     save_button = box.addButton(
-        "Save Workspace && Switch", QtWidgets.QMessageBox.ButtonRole.AcceptRole
+        f"Save Workspace && {verb}", QtWidgets.QMessageBox.ButtonRole.AcceptRole
     )
     discard_button = box.addButton(
-        "Switch Without Saving", QtWidgets.QMessageBox.ButtonRole.DestructiveRole
+        f"{verb} Without Saving", QtWidgets.QMessageBox.ButtonRole.DestructiveRole
     )
     cancel_button = box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(cancel_button)
@@ -712,27 +716,59 @@ def _save_workspace(main_window: "MainWindow") -> None:
     save_load_actions.save_current_workspace(main_window)
 
 
-def confirm_switch_target_media(
-    main_window: "MainWindow", media_path: Optional[str]
-) -> bool:
-    """Asks before a media switch drops unsaved alignments; False means cancel."""
+def _unsaved_alignments(main_window: "MainWindow") -> Optional[AlignmentStore]:
+    """The store if it holds unsaved alignments and prompting is allowed."""
     store = getattr(main_window, "alignments", None)
     if not isinstance(store, AlignmentStore):
-        return True
+        return None
     if getattr(main_window, _SUPPRESS_SWITCH_PROMPT_ATTR, False) or getattr(
         main_window, "is_batch_processing", False
     ):
-        return True
-    if (
-        store.media_path is None
-        or store.matches_media(media_path)
-        or not store.has_unsaved_changes()
-    ):
-        return True
-    choice = _ask_media_switch(
-        main_window, len(store), os.path.basename(store.media_path)
+        return None
+    if store.media_path is None or not store.has_unsaved_changes():
+        return None
+    return store
+
+
+def _confirm_discard(
+    main_window: "MainWindow", store: AlignmentStore, verb: str, consequence: str
+) -> bool:
+    choice = _ask_discard_alignments(
+        main_window,
+        len(store),
+        os.path.basename(store.media_path or ""),
+        verb,
+        consequence,
     )
     if choice == "save":
         _save_workspace(main_window)
         return not store.has_unsaved_changes()
     return choice == "discard"
+
+
+def confirm_switch_target_media(
+    main_window: "MainWindow", media_path: Optional[str]
+) -> bool:
+    """Asks before a media switch drops unsaved alignments; False means cancel."""
+    store = _unsaved_alignments(main_window)
+    if store is None or store.matches_media(media_path):
+        return True
+    return _confirm_discard(
+        main_window,
+        store,
+        "Switch",
+        "Switching target media discards them, including manual edits.",
+    )
+
+
+def confirm_load_workspace(main_window: "MainWindow") -> bool:
+    """Asks before loading a workspace drops unsaved alignments; False means cancel."""
+    store = _unsaved_alignments(main_window)
+    if store is None:
+        return True
+    return _confirm_discard(
+        main_window,
+        store,
+        "Load",
+        "Loading a workspace discards them, including manual edits.",
+    )
