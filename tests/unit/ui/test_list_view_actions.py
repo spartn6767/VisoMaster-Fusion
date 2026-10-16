@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from PySide6 import QtWidgets
+from PySide6 import QtGui, QtWidgets
 
 from app.ui.widgets.actions import list_view_actions
 
@@ -491,3 +491,30 @@ def test_help_guide_reports_missing_page(tmp_path, monkeypatch):
     main_window = SimpleNamespace(project_root_path=str(tmp_path))
     list_view_actions.show_wiki_guide(main_window, "paint-mask.md", "Paint Mask")
     assert calls and calls[0][1] == "Document Not Found"
+
+
+def test_wiki_links_open_in_the_same_popup(monkeypatch):
+    from pathlib import Path
+
+    from PySide6 import QtCore
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    shown = []
+
+    def fake_exec(dialog):
+        browser = dialog.findChild(QtWidgets.QTextBrowser)
+        browser.anchorClicked.emit(QtCore.QUrl("paint-mask.md"))
+        shown.append((dialog.windowTitle(), browser.toPlainText()))
+        return 0
+
+    opened = []
+    monkeypatch.setattr(QtWidgets.QDialog, "exec", fake_exec)
+    monkeypatch.setattr(QtGui.QDesktopServices, "openUrl", opened.append)
+    main_window = QtWidgets.QWidget()
+    main_window.project_root_path = str(Path(__file__).resolve().parents[3])
+    list_view_actions.show_wiki_guide(
+        main_window, "edit-alignments.md", "Edit Alignments"
+    )
+    assert shown[0][0] == "Paint Mask"
+    assert "Reset From Here" in shown[0][1]
+    assert opened == []

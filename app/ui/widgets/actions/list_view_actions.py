@@ -1038,6 +1038,33 @@ def shortcuts_markdown(project_root) -> Optional[str]:
     return wiki_markdown(project_root, "keyboard-shortcuts.md")
 
 
+def _follow_wiki_link(
+    dialog: QtWidgets.QDialog,
+    browser: QtWidgets.QTextBrowser,
+    current: list[Path],
+    url: QtCore.QUrl,
+) -> None:
+    """Opens web links in the browser and loads linked .md pages in the same popup."""
+    if url.scheme() in ("http", "https", "mailto"):
+        QtGui.QDesktopServices.openUrl(url)
+        return
+    if not url.path():
+        browser.scrollToAnchor(url.fragment())
+        return
+    target = (current[0].parent / url.path()).resolve()
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return
+    current[0] = target
+    browser.setMarkdown(re.sub(r"<!--.*?-->\n?", "", text, flags=re.DOTALL))
+    heading = re.search(r"^# (.+)$", text, flags=re.MULTILINE)
+    if heading:
+        dialog.setWindowTitle(heading.group(1).strip())
+    if url.fragment():
+        browser.scrollToAnchor(url.fragment())
+
+
 def show_wiki_page(main_window: "MainWindow", page: str, title: str) -> bool:
     """Shows a docs/wiki page in a dialog; False if the page is missing."""
     markdown = wiki_markdown(main_window.project_root_path, page)
@@ -1048,8 +1075,10 @@ def show_wiki_page(main_window: "MainWindow", page: str, title: str) -> bool:
     dialog.setWindowIcon(QtGui.QIcon(":/media/media/visomaster_small.png"))
     layout = QtWidgets.QVBoxLayout(dialog)
     browser = QtWidgets.QTextBrowser(dialog)
-    browser.setOpenExternalLinks(True)
+    browser.setOpenLinks(False)
     browser.setMarkdown(markdown)
+    current = [Path(main_window.project_root_path) / WIKI_DIR / page]
+    browser.anchorClicked.connect(partial(_follow_wiki_link, dialog, browser, current))
     layout.addWidget(browser)
     buttons = QtWidgets.QDialogButtonBox(
         QtWidgets.QDialogButtonBox.StandardButton.Close, dialog
