@@ -255,6 +255,13 @@ class TargetMediaCardButton(CardButton):
         self._thumbnail_pixmap = pixmap
         self._update_thumbnail_pixmap()
 
+    def event(self, event: QtCore.QEvent) -> bool:
+        if event.type() == QtCore.QEvent.Type.ToolTip and not self.is_webcam:
+            list_item = getattr(self, "list_item", None)
+            if list_item is not None and list_item.ensureMediaMetadata():
+                self.setToolTip(list_item.to_tooltip())
+        return super().event(event)
+
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         self._update_thumbnail_pixmap()

@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Optional
 
 from PySide6 import QtCore, QtWidgets
 
-from app.helpers.miscellaneous import MediaMetadata, get_file_type
+from app.helpers.miscellaneous import (
+    MediaMetadata,
+    get_file_type,
+    probe_media_metadata,
+)
 
 if TYPE_CHECKING:
     from app.ui.widgets.widget_components import CardButton
@@ -50,6 +54,16 @@ initialize_combobox_items = [
 _FILE_MODES = frozenset(
     {SortingMode.FileBirthDate, SortingMode.FileName, SortingMode.FileSize}
 )
+
+
+def format_duration(seconds: float) -> str:
+    """H:MM:SS, or M:SS under an hour."""
+    total = int(round(max(0.0, seconds)))
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
 
 
 @total_ordering
@@ -176,6 +190,28 @@ class SortableListWidgetItem(QtWidgets.QListWidgetItem):
         metadata = self.data(SortableDataRole.MediaMetadataRole)
         return metadata if isinstance(metadata, MediaMetadata) else None
 
+    def ensureMediaMetadata(self) -> bool:
+        """Probe the file now if the loader skipped it; True if metadata was added.
+
+        The loader only probes when sorting/filtering needs it, so the tooltip
+        calls this on hover to show resolution, frame rate and duration.
+        """
+        if self.mediaMetadata() is not None or getattr(self, "_probe_failed", False):
+            return False
+        fileinfo = self.fileInfo()
+        file_type = self.fileType()
+        if fileinfo is None or file_type not in ("video", "image"):
+            return False
+        metadata = probe_media_metadata(fileinfo.filePath(), file_type)
+        if metadata is None:
+            self._probe_failed = True
+            return False
+        self.setMediaMetadata(metadata)
+        imgdim = SortableImageDimension.from_metadata(metadata)
+        if imgdim is not None:
+            self.setImageDimension(imgdim)
+        return True
+
     def setMediaMetadata(self, metadata: MediaMetadata) -> None:
         self.setData(SortableDataRole.MediaMetadataRole, metadata)
 
@@ -251,13 +287,17 @@ class SortableListWidgetItem(QtWidgets.QListWidgetItem):
 
         image_dim = self.imageDimension()
         if image_dim:
-            tipslist.append(f"Dimensions: {image_dim}")
+            tipslist.append(f"Resolution: {image_dim}")
 
         metadata = self.mediaMetadata()
         if metadata and self.fileType() == "video":
+            if metadata.frame_rate:
+                tipslist.append(
+                    f"Duration: {format_duration(metadata.total_frames / metadata.frame_rate)}"
+                )
             tipslist.append(f"Length: {metadata.total_frames} frames")
             if metadata.frame_rate:
-                tipslist.append(f"Frame Rate: {metadata.frame_rate:.3f}")
+                tipslist.append(f"Frame Rate: {metadata.frame_rate:.3f} fps")
             if metadata.bitrate_kbits:
                 tipslist.append(f"Bitrate: {metadata.bitrate_kbits:.0f} kBit/s")
 
