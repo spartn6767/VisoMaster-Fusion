@@ -58,6 +58,8 @@ def set_mask_paint_mode(main_window: "MainWindow", enabled: bool) -> None:
     if enabled and isinstance(view, QtWidgets.QGraphicsView):
         view.viewport().setMouseTracking(True)
     if enabled:
+        aea.focus_viewer(main_window)
+    if enabled:
         main_window.alignment_edit_enabled = False
         aea.pause_for_editing(main_window)
         # Re-render so the worker captures the computed masks for the overlay.

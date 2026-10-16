@@ -28,7 +28,7 @@ Single-letter shortcuts don't work while a text box (such as search) has focus.
 
 ## Edit Alignments and Paint Mask
 
-While either mode is on, these keys replace their usual action and work on the selected face, like the bar buttons:
+While either mode is on, these keys replace their usual action and work on the selected face, like the bar buttons. Turning a mode on gives the preview keyboard focus; if a key doesn't respond (for example after typing in a number box), click the preview.
 
 | Key | Edit Alignments | Paint Mask |
 |---|---|---|

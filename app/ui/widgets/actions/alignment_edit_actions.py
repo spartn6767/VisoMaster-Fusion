@@ -145,11 +145,20 @@ def pause_for_editing(main_window: "MainWindow") -> None:
         video_processor.stop_processing()
 
 
+def focus_viewer(main_window: "MainWindow") -> None:
+    """Gives the preview keyboard focus so the edit-mode keys reach the window
+    instead of a number box that last had focus."""
+    view = getattr(main_window, "graphicsViewFrame", None)
+    if isinstance(view, QtWidgets.QWidget):
+        view.setFocus(QtCore.Qt.FocusReason.OtherFocusReason)
+
+
 def set_alignment_edit_mode(main_window: "MainWindow", enabled: bool) -> None:
     from app.ui.widgets.actions import mask_paint_actions
 
     main_window.alignment_edit_enabled = bool(enabled)
     if enabled:
+        focus_viewer(main_window)
         pause_for_editing(main_window)
         main_window.mask_paint_enabled = False
         mask_paint_actions.sync_mask_paint_ui(main_window)

@@ -461,3 +461,15 @@ def test_edit_mode_keys_run_bar_actions(main_window, monkeypatch):
         ("align", "delete"),
         ("mask", "reset_frame"),
     ]
+
+
+def test_focus_viewer_targets_the_preview(monkeypatch):
+    from PySide6 import QtWidgets
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    focused = []
+    view = QtWidgets.QGraphicsView()
+    monkeypatch.setattr(view, "setFocus", lambda *a: focused.append(a))
+    aea.focus_viewer(SimpleNamespace(graphicsViewFrame=view))
+    aea.focus_viewer(SimpleNamespace())
+    assert len(focused) == 1
