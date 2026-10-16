@@ -211,6 +211,19 @@ class _DragHandle(QtWidgets.QLabel):
         event.accept()
 
 
+def close_bar_button(
+    bar: QtWidgets.QWidget, mode: str, close: Callable[[], None]
+) -> QtWidgets.QToolButton:
+    """✕ button that leaves the bar's edit mode, like unchecking its toolbar button."""
+    button = QtWidgets.QToolButton(bar)
+    button.setObjectName("closeBarButton")
+    button.setText("\u2715")
+    button.setToolTip(f"Close {mode}")
+    button.setAutoRaise(True)
+    button.clicked.connect(lambda *_: close())
+    return button
+
+
 def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     brush = brush_settings(main_window)
     bar = QtWidgets.QFrame(main_window.graphicsViewFrame)
@@ -256,6 +269,12 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     add_spin("Feather", "feather", 0, 200, "Brush edge softness in frame pixels.")
     add_spin(
         "Opacity %", "opacity", 0, 100, "Overlay opacity (preview only, not the mask)."
+    )
+    layout.addStretch(1)
+    layout.addWidget(
+        close_bar_button(
+            bar, "Paint Mask", lambda: set_mask_paint_mode(main_window, False)
+        )
     )
     bar_buttons: dict[str, QtWidgets.QToolButton] = {}
     for key, text, tip in BAR_ACTIONS:

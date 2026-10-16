@@ -800,7 +800,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.targetVideosSortComboBox.clear()
         for item_text, item_sort_mode in sortable_widgets.initialize_combobox_items:
             self.targetVideosSortComboBox.addItem(item_text, item_sort_mode)
-        self.targetVideosSortComboBox.setCurrentIndex(0)
+        self.targetVideosSortComboBox.setCurrentIndex(
+            self.targetVideosSortComboBox.findData(
+                sortable_widgets.SortingMode.FileBirthDate
+            )
+        )
+        self.sortTargetVideosDirectionButton.setChecked(True)  # newest first
         self.targetVideosList.setSortingMode(
             self.targetVideosSortComboBox.currentData()
         )

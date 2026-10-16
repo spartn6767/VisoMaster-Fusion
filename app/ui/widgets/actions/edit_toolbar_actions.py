@@ -234,6 +234,14 @@ def _build_alignment_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
                 )
             row.addWidget(button)
             buttons[key] = button
+    top.addStretch(1)
+    top.addWidget(
+        mpa.close_bar_button(
+            bar,
+            "Edit Alignments",
+            lambda: aea.set_alignment_edit_mode(main_window, False),
+        )
+    )
     bar.adjustSize()
     x, y = getattr(main_window, _ALIGN_BAR_POS_ATTR, (8, 8))
     bar.move(mpa.clamp_bar_position(bar, QtCore.QPoint(int(x), int(y))))

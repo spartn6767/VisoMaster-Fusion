@@ -114,3 +114,22 @@ def test_floating_alignment_bar(monkeypatch):
     main_window.alignment_edit_enabled = False
     eta.sync_alignment_bar(main_window)
     assert bar.isHidden()
+
+
+def test_alignment_bar_close_button_leaves_edit_mode(monkeypatch):
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    view = QtWidgets.QWidget()
+    view.resize(1400, 700)
+    main_window = SimpleNamespace(graphicsViewFrame=view)
+    calls = []
+    monkeypatch.setattr(
+        aea, "set_alignment_edit_mode", lambda mw, on: calls.append((mw, on))
+    )
+    bar = eta._build_alignment_bar(main_window)
+    close = bar.findChild(QtWidgets.QToolButton, "closeBarButton")
+    assert close is not None
+    assert "closeBarButton" not in [
+        b.objectName() for b in main_window._alignment_bar_buttons.values()
+    ]
+    close.click()
+    assert calls == [(main_window, False)]

@@ -214,3 +214,21 @@ def test_brush_bar_actions_use_selected_face(main_window, monkeypatch):
     assert store.effective_mask(2, 0) is None
     assert mpa.toolbar_action(main_window, "paste")
     assert store.effective_mask(2, 0) is not None
+
+
+def test_brush_bar_close_button_leaves_paint_mode(monkeypatch):
+    from PySide6 import QtWidgets
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    view = QtWidgets.QWidget()
+    view.resize(1200, 600)
+    main_window = SimpleNamespace(graphicsViewFrame=view)
+    calls = []
+    monkeypatch.setattr(
+        mpa, "set_mask_paint_mode", lambda mw, on: calls.append((mw, on))
+    )
+    bar = mpa._build_brush_bar(main_window)
+    close = bar.findChild(QtWidgets.QToolButton, "closeBarButton")
+    assert close is not None and close.isEnabled()
+    close.click()
+    assert calls == [(main_window, False)]

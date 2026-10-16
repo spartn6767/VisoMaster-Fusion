@@ -53,6 +53,7 @@ def _run_app() -> None:
 
     import qdarktheme
     from app.ui.core.proxy_style import ProxyStyle
+    from app.ui.widgets.actions import control_actions
 
     parser = argparse.ArgumentParser(description="VisoMaster")
     parser.add_argument(
@@ -76,7 +77,10 @@ def _run_app() -> None:
         )
         app.setStyleSheet(_style)
     window = main_ui.MainWindow(gpu_id=args.gpu_id)
-    window.show()
+    control_actions.change_theme(
+        window, window.control.get("ThemeSelection", "Glass Studio")
+    )
+    window.showMaximized()
     app.exec()
 
 
