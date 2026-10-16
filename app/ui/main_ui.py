@@ -1155,10 +1155,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.view_fullscreen(self)
             case QtCore.Qt.Key_T:
                 video_control_actions.toggle_theatre_mode(self)
-            case QtCore.Qt.Key_V:
-                video_control_actions.advance_video_slider_by_n_frames(self, n=1)
-            case QtCore.Qt.Key_C:
-                video_control_actions.rewind_video_slider_by_n_frames(self, n=1)
             case QtCore.Qt.Key_D:
                 video_control_actions.advance_video_slider_by_n_frames(self)
             case QtCore.Qt.Key_A:
@@ -1188,12 +1184,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.move_slider_to_nearest_marker(self, "next")
             case QtCore.Qt.Key_Q:
                 video_control_actions.move_slider_to_nearest_marker(self, "previous")
-            case QtCore.Qt.Key_K | QtCore.Qt.Key_L:
-                from app.ui.widgets.actions import alignment_edit_actions
-
-                alignment_edit_actions.step_frame_shortcut(
-                    self, event.key() == QtCore.Qt.Key_L
-                )
+            case QtCore.Qt.Key_L:
+                video_control_actions.advance_video_slider_by_n_frames(self)
+            case QtCore.Qt.Key_K:
+                video_control_actions.rewind_video_slider_by_n_frames(self)
             case QtCore.Qt.Key_N | QtCore.Qt.Key_P:
                 from app.ui.widgets.actions import alignment_edit_actions
 

@@ -397,30 +397,6 @@ def test_fill_between_edits_and_jump_keys(main_window):
     assert aea.fill_between_edits(main_window, 0, 0) == 0
 
 
-def test_arrow_keys_step_frames_only_in_edit_modes(main_window, monkeypatch):
-    from app.ui.widgets.actions import video_control_actions as vca
-
-    calls = []
-    monkeypatch.setattr(
-        vca, "advance_video_slider_by_n_frames", lambda mw: calls.append(1)
-    )
-    monkeypatch.setattr(
-        vca, "rewind_video_slider_by_n_frames", lambda mw: calls.append(-1)
-    )
-    main_window.video_processor = SimpleNamespace(
-        file_type="video", media_path="/v.mp4", processing=False
-    )
-    main_window.control = {"AlignmentsCacheEnableToggle": True}
-    main_window.alignment_edit_enabled = False
-    main_window.mask_paint_enabled = False
-    assert not aea.step_frame_shortcut(main_window, True) and calls == []
-    main_window.mask_paint_enabled = True
-    assert aea.step_frame_shortcut(main_window, True)
-    main_window.mask_paint_enabled, main_window.alignment_edit_enabled = False, True
-    assert aea.step_frame_shortcut(main_window, False)
-    assert calls == [1, -1]
-
-
 def test_edit_mode_keys_run_bar_actions(main_window, monkeypatch):
     from PySide6 import QtCore
 

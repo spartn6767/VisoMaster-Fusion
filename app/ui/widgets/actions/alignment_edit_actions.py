@@ -248,23 +248,6 @@ def edit_mode_key(main_window: "MainWindow", event: QtGui.QKeyEvent) -> bool:
     return False
 
 
-def step_frame_shortcut(main_window: "MainWindow", forward: bool) -> bool:
-    """K/L in an edit mode: back/forward by the frame-step value, like D/A.
-    True if an edit mode is on and took the key."""
-    from app.ui.widgets.actions import mask_paint_actions, video_control_actions
-
-    if not (
-        is_alignment_edit_active(main_window)
-        or mask_paint_actions.is_mask_paint_active(main_window)
-    ):
-        return False
-    if forward:
-        video_control_actions.advance_video_slider_by_n_frames(main_window)
-    else:
-        video_control_actions.rewind_video_slider_by_n_frames(main_window)
-    return True
-
-
 def _refresh(main_window: "MainWindow") -> None:
     from app.ui.widgets.actions import common_actions
 
