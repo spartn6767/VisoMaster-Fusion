@@ -308,3 +308,17 @@ def test_nearest_frame_skips_gaps_and_empty_frames():
     assert store.nearest_frame(12, -1) == 10
     assert store.nearest_frame(3, -1) is None
     assert store.nearest_frame(20, 1) is None
+
+
+def test_rename_media_keeps_entries(tmp_path):
+    store = AlignmentStore()
+    old = str(tmp_path / "a.mp4")
+    new = str(tmp_path / "renamed.mp4")
+    store.bind_media(old)
+    store.put(1, [_face()], W, H, "sig")
+    store.rename_media(str(tmp_path / "other.mp4"), new)
+    assert store.matches_media(old)
+    store.rename_media(old, new)
+    assert store.matches_media(new)
+    store.bind_media(new)
+    assert len(store) == 1

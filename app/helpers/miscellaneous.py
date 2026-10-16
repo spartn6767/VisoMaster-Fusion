@@ -794,6 +794,36 @@ def probe_media_metadata(media_file_path, file_type) -> Optional[MediaMetadata]:
     )
 
 
+_INVALID_FILE_NAME_CHARS = set('<>:"/\\|?*')
+
+
+def rename_media_file(media_path: str, new_name: str) -> str:
+    """Renames a media file inside its folder and returns the new path.
+
+    The original extension is kept (appended if new_name doesn't end with it).
+    Raises ValueError with a user-facing message for an invalid or taken name,
+    and OSError if the rename itself fails (e.g. the file is open elsewhere).
+    """
+    new_name = new_name.strip()
+    if new_name in ("", ".", ".."):
+        raise ValueError("Enter a file name.")
+    if any(ch in _INVALID_FILE_NAME_CHARS for ch in new_name):
+        raise ValueError("A file name can't contain any of these: < > : \" / \\ | ? *")
+    ext = os.path.splitext(media_path)[1]
+    if ext and not new_name.lower().endswith(ext.lower()):
+        new_name += ext
+    new_path = os.path.join(os.path.dirname(media_path), new_name)
+    if new_path == media_path:
+        return media_path
+    # normcase lets a case-only rename through on Windows, where both names exist.
+    if os.path.exists(new_path) and os.path.normcase(new_path) != os.path.normcase(
+        media_path
+    ):
+        raise ValueError(f"A file named '{new_name}' already exists in this folder.")
+    os.rename(media_path, new_path)
+    return new_path
+
+
 def get_scaled_resolution(
     media_width: Optional[int] = None,
     media_height: Optional[int] = None,
