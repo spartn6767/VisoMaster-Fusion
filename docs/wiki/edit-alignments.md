@@ -4,7 +4,7 @@ Edit Alignments lets you fix face detection by hand on a paused frame: move a fa
 
 ## Before you start
 
-Edit Alignments works on a paused video frame. It needs **Settings > Detectors > Reuse Saved Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Edit Alignments on pauses playback.
+Edit Alignments works on a paused video frame. It needs **Settings > Detectors > Reuse Stored Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Edit Alignments on pauses playback.
 
 ## In the viewer
 
@@ -49,7 +49,7 @@ While this mode is on, **K** / **L** step back / forward by the frame-step value
 - **Jumps to the edit:** if the step was on another frame, the viewer goes to that frame first.
 - **Shared with Paint Mask:** alignment and mask edits are one history, so Undo on either bar undoes the last edit of either kind.
 - **A new edit after undoing** drops the steps you could still redo.
-- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Saved Alignments in Settings.
+- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Stored Alignments in Settings.
 - **Add as Target:** Undo removes the assignment, but the new target face stays.
 
 ## Finding and fixing runs of frames

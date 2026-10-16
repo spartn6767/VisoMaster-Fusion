@@ -167,7 +167,7 @@ def set_alignment_edit_mode(main_window: "MainWindow", enabled: bool) -> None:
             main_window,
             "Edit Alignments",
             "Alignments can be edited on a paused video frame with "
-            "Settings > Detectors > Reuse Saved Alignments on, and Face Compare, "
+            "Settings > Detectors > Reuse Stored Alignments on, and Face Compare, "
             "Face Mask view, VR180 and Manual Rotation off.",
         )
     refresh_alignment_overlay(main_window)

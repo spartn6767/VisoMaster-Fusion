@@ -4,7 +4,7 @@ Paint Mask lets you fix the swap mask by hand: add areas the swap should cover, 
 
 ## Before you start
 
-Paint Mask works on a paused video frame. It needs **Settings > Detectors > Reuse Saved Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Paint Mask on pauses playback.
+Paint Mask works on a paused video frame. It needs **Settings > Detectors > Reuse Stored Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Paint Mask on pauses playback.
 
 ## Painting
 
@@ -69,7 +69,7 @@ While this mode is on, **K** / **L** step back / forward by the frame-step value
 - **Later frames follow:** undoing a stroke on a keyframe also puts back what the frames carrying it showed before.
 - **Jumps to the edit:** if the step was on another frame, the viewer goes to that frame first.
 - **Shared with Edit Alignments:** mask and alignment edits are one history, so Undo on either bar undoes the last edit of either kind.
-- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Saved Alignments in Settings.
+- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Stored Alignments in Settings.
 
 ## Saving
 

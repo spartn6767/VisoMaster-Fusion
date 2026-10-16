@@ -589,7 +589,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         },
         "AlignmentsCacheEnableToggle": {
             "level": 1,
-            "label": "Reuse Saved Alignments",
+            "label": "Reuse Stored Alignments",
             "default": True,
             "help": "Store every frame's detected faces (bbox, landmarks, embedding) and reuse them on seek, preview and render instead of re-detecting. Saved alongside the workspace/job as a '.alignments.npz' file. Entries are re-detected automatically when detector, landmark, recognition, smoothing or tracking settings or the target faces change. Turning this off clears the stored alignments.",
             "exec_function": control_actions.handle_alignments_cache_toggle,

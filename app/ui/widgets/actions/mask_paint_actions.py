@@ -69,7 +69,7 @@ def set_mask_paint_mode(main_window: "MainWindow", enabled: bool) -> None:
                 main_window,
                 "Paint Mask",
                 "Masks can be painted on a paused video frame with "
-                "Settings > Detectors > Reuse Saved Alignments on, and Face Compare, "
+                "Settings > Detectors > Reuse Stored Alignments on, and Face Compare, "
                 "Face Mask view, VR180 and Manual Rotation off.",
             )
     aea.refresh_alignment_overlay(main_window)
