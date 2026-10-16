@@ -57,7 +57,7 @@ While Paint Mask is on, a circle follows the pointer over the frame. The solid c
 
 ## Moving between frames
 
-While this mode is on, **K** / **L** step one frame back / forward, the same as the frame buttons. (C and V do Copy and Paste in this mode.)
+While this mode is on, **K** / **L** step back / forward by the frame-step value (default 1), the same as D / A. (C and V do Copy and Paste in this mode.)
 
 **Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Reset Frame. While the mode is on, these replace the keys' usual actions (C/V frame steps, Z jump to start, X Face Compare).
 

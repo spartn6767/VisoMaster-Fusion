@@ -402,10 +402,10 @@ def test_arrow_keys_step_frames_only_in_edit_modes(main_window, monkeypatch):
 
     calls = []
     monkeypatch.setattr(
-        vca, "advance_video_slider_by_n_frames", lambda mw, n: calls.append(n)
+        vca, "advance_video_slider_by_n_frames", lambda mw: calls.append(1)
     )
     monkeypatch.setattr(
-        vca, "rewind_video_slider_by_n_frames", lambda mw, n: calls.append(-n)
+        vca, "rewind_video_slider_by_n_frames", lambda mw: calls.append(-1)
     )
     main_window.video_processor = SimpleNamespace(
         file_type="video", media_path="/v.mp4", processing=False
