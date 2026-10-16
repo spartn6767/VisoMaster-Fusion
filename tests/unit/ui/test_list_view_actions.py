@@ -456,3 +456,38 @@ def test_show_shortcuts_falls_back_without_wiki_page(tmp_path):
     )
     list_view_actions.show_shortcuts(main_window)
     assert signal.calls and signal.calls[0][0] == "Shortcuts"
+
+
+def test_help_guides_show_their_wiki_pages(monkeypatch):
+    from pathlib import Path
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    shown = []
+
+    def fake_exec(dialog):
+        browser = dialog.findChild(QtWidgets.QTextBrowser)
+        shown.append((dialog.windowTitle(), browser.toPlainText()))
+        return 0
+
+    monkeypatch.setattr(QtWidgets.QDialog, "exec", fake_exec)
+    main_window = QtWidgets.QWidget()
+    main_window.project_root_path = str(Path(__file__).resolve().parents[3])
+    list_view_actions.show_wiki_guide(main_window, "paint-mask.md", "Paint Mask")
+    list_view_actions.show_wiki_guide(
+        main_window, "edit-alignments.md", "Edit Alignments"
+    )
+    assert [title for title, _ in shown] == ["Paint Mask", "Edit Alignments"]
+    assert "Reset From Here" in shown[0][1]
+    assert "Re-detect Frame" in shown[1][1]
+
+
+def test_help_guide_reports_missing_page(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        list_view_actions.common_widget_actions,
+        "create_and_show_messagebox",
+        lambda *args, **kwargs: calls.append(args),
+    )
+    main_window = SimpleNamespace(project_root_path=str(tmp_path))
+    list_view_actions.show_wiki_guide(main_window, "paint-mask.md", "Paint Mask")
+    assert calls and calls[0][1] == "Document Not Found"

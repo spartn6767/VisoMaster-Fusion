@@ -1022,26 +1022,29 @@ def open_input_faces_folder(main_window: "MainWindow"):
     _open_folder_in_file_manager(main_window, folder_name)
 
 
-SHORTCUTS_DOC = Path("docs") / "wiki" / "keyboard-shortcuts.md"
+WIKI_DIR = Path("docs") / "wiki"
 
 
-def shortcuts_markdown(project_root) -> Optional[str]:
-    """The wiki shortcuts page without its HTML comments, or None if it's missing."""
+def wiki_markdown(project_root, page: str) -> Optional[str]:
+    """A docs/wiki page without its HTML comments, or None if it's missing."""
     try:
-        text = (Path(project_root) / SHORTCUTS_DOC).read_text(encoding="utf-8")
+        text = (Path(project_root) / WIKI_DIR / page).read_text(encoding="utf-8")
     except OSError:
         return None
     return re.sub(r"<!--.*?-->\n?", "", text, flags=re.DOTALL)
 
 
-def show_shortcuts(main_window: "MainWindow"):
-    """Shows docs/wiki/keyboard-shortcuts.md, so the page is the single list to update."""
-    markdown = shortcuts_markdown(main_window.project_root_path)
+def shortcuts_markdown(project_root) -> Optional[str]:
+    return wiki_markdown(project_root, "keyboard-shortcuts.md")
+
+
+def show_wiki_page(main_window: "MainWindow", page: str, title: str) -> bool:
+    """Shows a docs/wiki page in a dialog; False if the page is missing."""
+    markdown = wiki_markdown(main_window.project_root_path, page)
     if markdown is None:
-        _show_builtin_shortcuts(main_window)
-        return
+        return False
     dialog = QtWidgets.QDialog(main_window)
-    dialog.setWindowTitle("Keyboard Shortcuts")
+    dialog.setWindowTitle(title)
     dialog.setWindowIcon(QtGui.QIcon(":/media/media/visomaster_small.png"))
     layout = QtWidgets.QVBoxLayout(dialog)
     browser = QtWidgets.QTextBrowser(dialog)
@@ -1055,6 +1058,23 @@ def show_shortcuts(main_window: "MainWindow"):
     layout.addWidget(buttons)
     dialog.resize(640, 720)
     dialog.exec()
+    return True
+
+
+def show_shortcuts(main_window: "MainWindow"):
+    """Shows docs/wiki/keyboard-shortcuts.md, so the page is the single list to update."""
+    if not show_wiki_page(main_window, "keyboard-shortcuts.md", "Keyboard Shortcuts"):
+        _show_builtin_shortcuts(main_window)
+
+
+def show_wiki_guide(main_window: "MainWindow", page: str, title: str):
+    if not show_wiki_page(main_window, page, title):
+        common_widget_actions.create_and_show_messagebox(
+            main_window,
+            "Document Not Found",
+            f"Could not find:\n{Path(main_window.project_root_path) / WIKI_DIR / page}",
+            parent_widget=main_window,
+        )
 
 
 def _show_builtin_shortcuts(main_window: "MainWindow"):

@@ -841,6 +841,35 @@ def set_up_menu_actions(main_window: "MainWindow"):
     main_window.actionView_Help_Presets.triggered.connect(
         partial(list_view_actions.show_presets, main_window)
     )
+    if not hasattr(main_window, "actionHelp_PaintMask"):
+        main_window.actionHelp_EditAlignments = QtGui.QAction(
+            "Edit Alignments Guide", main_window
+        )
+        main_window.actionHelp_PaintMask = QtGui.QAction(
+            "Paint Mask Guide", main_window
+        )
+        main_window.menuHelp.insertAction(
+            main_window.actionView_Help_Presets, main_window.actionHelp_EditAlignments
+        )
+        main_window.menuHelp.insertAction(
+            main_window.actionView_Help_Presets, main_window.actionHelp_PaintMask
+        )
+    main_window.actionHelp_EditAlignments.triggered.connect(
+        partial(
+            list_view_actions.show_wiki_guide,
+            main_window,
+            "edit-alignments.md",
+            "Edit Alignments",
+        )
+    )
+    main_window.actionHelp_PaintMask.triggered.connect(
+        partial(
+            list_view_actions.show_wiki_guide,
+            main_window,
+            "paint-mask.md",
+            "Paint Mask",
+        )
+    )
     main_window.actionHelp_QuickStartGuide.triggered.connect(
         partial(list_view_actions._open_about_link, main_window, "quickstart")
     )
