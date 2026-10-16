@@ -4,7 +4,7 @@ Edit Alignments lets you fix face detection by hand on a paused frame: move a fa
 
 ## Before you start
 
-Edit Alignments works on a paused video frame. It needs **Settings > Detectors > Reuse Saved Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Edit Alignments on pauses playback.
+Edit Alignments works on a paused video frame. It needs **Settings > Detectors > Reuse Stored Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Edit Alignments on pauses playback.
 
 ## In the viewer
 
@@ -28,6 +28,18 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 | Assign to Target | Pins the selected face to a target face, skipping the usual look-alike matching for it on this frame. |
 | Add as Target | Creates a target face from the selected face. |
 | Delete Face | Deletes the selected face from this frame. |
+| Find Frames to Check | Marks frames worth a look in pink on the seek bar. See below. |
+| Fill Between Edits | Blends the selected face between the previous frame you edited it on and this frame. See below. |
+
+## Autosave
+
+With **Settings > Detectors > Autosave Alignments** on (the default), unsaved alignments (including masks) are written to an autosave file every **Autosave Every** minutes (default 2). The **Save Alignments** button, right of Paint Mask, saves them with the workspace right away (it asks where if the workspace hasn't been saved yet). If the app closes unexpectedly, load the same video and use **File > Recover Autosaved Alignments...** to get them back. The autosave doesn't count as saving, so you're still asked to save before switching videos. A normal exit deletes it once everything is saved.
+
+## Moving between frames
+
+While this mode is on, **K** / **L** step back / forward by the frame-step value (default 1), as they do outside the mode. (C and V do Copy and Paste here.)
+
+**Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Delete Face. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
 
 ## Undo and redo
 
@@ -37,8 +49,14 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 - **Jumps to the edit:** if the step was on another frame, the viewer goes to that frame first.
 - **Shared with Paint Mask:** alignment and mask edits are one history, so Undo on either bar undoes the last edit of either kind.
 - **A new edit after undoing** drops the steps you could still redo.
-- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Saved Alignments in Settings.
+- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Stored Alignments in Settings.
 - **Add as Target:** Undo removes the assignment, but the new target face stays.
+
+## Finding and fixing runs of frames
+
+- **Edited frames are marked:** frames with manual alignment or mask edits show a cyan mark under the seek bar. Press **N** / **P** to jump to the next / previous one.
+- **Find Frames to Check** marks frames in pink above the seek bar where a face's landmarks suddenly jump from the frame before, or where a face disappears for 1 to 3 frames. Press **Shift+N** / **Shift+P** to step through them. Only faces matched to a target face are checked, and only frames that already have stored alignments. Run it again after fixing frames to update the marks.
+- **Fill Between Edits:** fix the face by hand on the first and last frame of a bad run, then select it on the last frame and click Fill Between Edits. Every frame in between gets a face blended between the two fixes (box and landmarks), and is marked as edited. Faces on those frames are replaced; painted masks on them are kept. One Undo reverts the whole fill.
 
 ## What an edit affects
 

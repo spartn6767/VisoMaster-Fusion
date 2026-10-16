@@ -259,6 +259,16 @@ def _copy_frame(frame: Optional[FrameAlignments]) -> Optional[FrameAlignments]:
 
 
 UNDO_LIMIT = 100
+SAVED_HISTORY_FILES = 5
+
+
+def _nearest(frames: list[int], frame_number: int, step: int) -> Optional[int]:
+    """Closest entry of sorted ``frames`` before (step < 0) or after (step > 0)."""
+    if step < 0:
+        i = bisect.bisect_left(frames, int(frame_number))
+        return frames[i - 1] if i > 0 else None
+    i = bisect.bisect_right(frames, int(frame_number))
+    return frames[i] if i < len(frames) else None
 
 
 @dataclass
@@ -320,6 +330,10 @@ class AlignmentStore:
         self._edit_whole = False
         self._edit_before: dict[int, Optional[FrameAlignments]] = {}
         self._edit_revision = 0
+        self._edited_index: tuple[int, list[int]] = (-1, [])
+        # History as of each save, keyed by file path; reloading the unchanged
+        # file brings it back: {path: (mtime, undo, redo)}.
+        self._saved_history: dict[str, tuple[float, list, list]] = {}
 
     # --- Introspection ---------------------------------------------------
     def __len__(self) -> int:
@@ -342,11 +356,55 @@ class AlignmentStore:
         """Closest frame with stored faces before (step < 0) or after (step > 0)."""
         with self._lock:
             frames = sorted(n for n, f in self._frames.items() if f.faces)
-        if step < 0:
-            i = bisect.bisect_left(frames, int(frame_number))
-            return frames[i - 1] if i > 0 else None
-        i = bisect.bisect_right(frames, int(frame_number))
-        return frames[i] if i < len(frames) else None
+        return _nearest(frames, frame_number, step)
+
+    def edited_frames(self) -> list[int]:
+        """Frames holding manual edits (alignments or painted masks), sorted."""
+        with self._lock:
+            if self._edited_index[0] != self._revision:
+                self._edited_index = (
+                    self._revision,
+                    sorted(n for n, f in self._frames.items() if f.is_pinned),
+                )
+            return self._edited_index[1]
+
+    def nearest_edited(self, frame_number: int, step: int) -> Optional[int]:
+        """Closest manually edited frame before (step < 0) or after (step > 0)."""
+        return _nearest(self.edited_frames(), frame_number, step)
+
+    def frames_to_check(self, jump: float = 0.25, max_gap: int = 3) -> list[int]:
+        """Frames worth reviewing: a face's landmarks jump by more than ``jump`` x
+        its size from the previous frame, or a face vanishes for up to ``max_gap``
+        stored frames. Only faces matched to a target face (face_id) are checked."""
+        with self._lock:
+            stored = set(self._frames)
+            items = sorted(
+                (n, [(f.face_id, f.bbox, f.kps_5) for f in frame.faces])
+                for n, frame in self._frames.items()
+            )
+        flagged: set[int] = set()
+        last: dict[str, tuple[int, np.ndarray]] = {}
+        for n, faces in items:
+            for face_id, bbox, kps in faces:
+                if face_id is None:
+                    continue
+                previous = last.get(face_id)
+                last[face_id] = (n, kps)
+                if previous is None:
+                    continue
+                prev_n, prev_kps = previous
+                if n == prev_n + 1:
+                    size = max(float(bbox[2] - bbox[0]), float(bbox[3] - bbox[1]), 1e-6)
+                    moved = np.linalg.norm(
+                        np.asarray(kps[:5]) - np.asarray(prev_kps[:5]), axis=1
+                    ).mean()
+                    if moved / size > jump:
+                        flagged.add(n)
+                elif n - prev_n - 1 <= max_gap and all(
+                    m in stored for m in range(prev_n + 1, n)
+                ):
+                    flagged.update(range(prev_n + 1, n))
+        return sorted(flagged)
 
     def matches_media(self, media_path: Optional[str]) -> bool:
         with self._lock:
@@ -758,25 +816,41 @@ class AlignmentStore:
             self._revision += 1
             self.clear_history()
 
-    def save(self, path: str) -> dict[str, Any]:
+    def save(self, path: str, mark_saved: bool = True) -> dict[str, Any]:
         """Writes the store to a compressed .npz sidecar and returns the header
         dict to embed in the workspace/job JSON. Skips the write if nothing
-        changed since the last save to the same path."""
+        changed since the last save to the same path. With mark_saved=False
+        (autosave) the store still counts as unsaved."""
         with self._lock:
             path = os.path.abspath(path)
             header = self._header(path)
             if self._saved.get(path) == self._revision and os.path.exists(path):
+                self._remember_history(path)
                 return header
             arrays = self._pack()
             revision = self._revision
         tmp_path = path + ".tmp.npz"
         np.savez_compressed(tmp_path, **arrays)  # type: ignore[arg-type]
         os.replace(tmp_path, path)
-        with self._lock:
-            self._saved[path] = revision
+        if mark_saved:
+            with self._lock:
+                self._saved[path] = revision
+                if self._revision == revision:
+                    self._remember_history(path)
         return header
 
-    def load(self, path: str) -> None:
+    def _remember_history(self, path: str) -> None:
+        self._saved_history.pop(path, None)
+        if self._undo or self._redo:
+            self._saved_history[path] = (
+                os.path.getmtime(path),
+                list(self._undo),
+                list(self._redo),
+            )
+            for old in list(self._saved_history)[:-SAVED_HISTORY_FILES]:
+                del self._saved_history[old]
+
+    def load(self, path: str, mark_saved: bool = True) -> None:
         with np.load(path, allow_pickle=False) as data:
             meta = json.loads(str(data["meta"]))
             if int(meta.get("version", 0)) > ALIGNMENTS_FORMAT_VERSION:
@@ -791,7 +865,12 @@ class AlignmentStore:
             self.hair_crop = tuple(float(v) for v in hair_crop) if hair_crop else None
             self._revision += 1
             self.clear_history()
-            self._saved[os.path.abspath(path)] = self._revision
+            path = os.path.abspath(path)
+            if mark_saved:
+                self._saved[path] = self._revision
+            remembered = self._saved_history.get(path)
+            if remembered is not None and remembered[0] == os.path.getmtime(path):
+                self._undo, self._redo = list(remembered[1]), list(remembered[2])
 
     def load_from_header(
         self, header: Optional[Mapping[str, Any]], base_dir: Optional[str] = None

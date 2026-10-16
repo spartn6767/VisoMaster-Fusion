@@ -182,3 +182,32 @@ def test_alignment_bar_undo_redo(monkeypatch):
     main_window.alignment_edit_enabled = False
     assert not aea.undo_shortcut(main_window, redo=True)
     assert store.can_redo()
+
+
+def test_save_alignments_saves_next_to_workspace_or_asks_first(tmp_path, monkeypatch):
+    from app.ui.widgets.actions import common_actions, save_load_actions
+
+    saves, toasts = [], []
+    workspace = tmp_path / "w.json"
+    main_window = SimpleNamespace(
+        alignments=AlignmentStore(), current_workspace_path=""
+    )
+
+    def fake_save(mw, data_filename=False, save_as=False):
+        saves.append(data_filename)
+        if data_filename is False and asked_ok["value"]:
+            workspace.write_text("{}")
+            mw.current_workspace_path = str(workspace)
+
+    asked_ok = {"value": False}
+    monkeypatch.setattr(save_load_actions, "save_current_workspace", fake_save)
+    monkeypatch.setattr(
+        common_actions,
+        "create_and_show_toast_message",
+        lambda mw, t, m: toasts.append(m),
+    )
+    assert not eta._save_alignments(main_window) and toasts == []
+    asked_ok["value"] = True
+    assert eta._save_alignments(main_window)
+    assert eta._save_alignments(main_window)
+    assert saves == [False, False, str(workspace)] and len(toasts) == 2

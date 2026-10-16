@@ -171,7 +171,10 @@ def test_brush_bar_drags_within_viewer():
     rows = bar.layout()
     assert isinstance(rows, QtWidgets.QVBoxLayout) and rows.count() == 2
     assert rows.itemAt(1).layout().count() == len(mpa.BAR_ACTIONS)
-    assert handle is not None and bar.pos() == QtCore.QPoint(8, 8)
+    assert handle is not None and bar.pos() == QtCore.QPoint(
+        *mpa.default_bar_position(bar)
+    )
+    bar.move(QtCore.QPoint(8, 8))
 
     def send(kind, x, y):
         button = QtCore.Qt.MouseButton.LeftButton
@@ -257,3 +260,88 @@ def test_undo_redo_strokes_and_resets(main_window, monkeypatch):
     assert store.effective_mask(2, 0) is not None
     assert aea.undo_edit(main_window)
     assert not aea.undo_edit(main_window)
+
+
+def test_this_frame_only_keeps_the_next_frame(main_window):
+    store = main_window.alignments
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    first = store.effective_mask(0, 0).copy()
+    mpa.brush_settings(main_window)["frame_only"] = True
+    mpa.apply_stroke(main_window, 1, 0, [NOSE], W, H, erase=True)
+    assert not np.array_equal(store.effective_mask(1, 0), first)
+    assert np.array_equal(store.effective_mask(2, 0), first)
+
+    store.undo()
+    assert store.get(2, 1, 1, None)[0]["mask"] is None
+    assert np.array_equal(store.effective_mask(1, 0), first)
+
+
+def test_apply_mask_to_range(main_window):
+    store = main_window.alignments
+    for n in (3, 4):
+        store.put(
+            n,
+            [{"bbox": [0.1, 0.05, 0.6, 0.6], "kps_5": KPS / W, "face_id": "A"}],
+            1,
+            1,
+            "sig",
+        )
+    mpa.apply_stroke(main_window, 2, 0, [NOSE], W, H, erase=False)
+    painted = store.effective_mask(2, 0).copy()
+
+    assert mpa.apply_mask_to_range(main_window, 0, 0, 1, 2) == 2
+    assert store.effective_mask(1, 0) is None and store.effective_mask(2, 0) is None
+    assert np.array_equal(store.effective_mask(3, 0), painted)
+    assert np.array_equal(store.effective_mask(4, 0), painted)
+
+    store.undo()
+    assert np.array_equal(store.effective_mask(2, 0), painted)
+    assert store.get(3, 1, 1, None)[0]["mask"] is None
+
+
+def test_range_action_reports_result(main_window, monkeypatch):
+    from app.ui.widgets.actions import common_actions
+
+    toasts = []
+    monkeypatch.setattr(
+        common_actions,
+        "create_and_show_toast_message",
+        lambda mw, title, text: toasts.append(text),
+    )
+    monkeypatch.setattr(mpa, "_ask_range", lambda mw, frame: (0, 2))
+    monkeypatch.setattr(mpa, "refresh_mask_overlay", lambda mw: None)
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 0)
+    assert mpa.toolbar_action(main_window, "range") == 3
+    assert toasts == ["Mask applied to frames 0\u20132 (3 frames with this face)."]
+
+
+def test_brush_circle_is_green_to_paint_and_red_to_erase(main_window, monkeypatch):
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    scene = QtWidgets.QGraphicsScene()
+    view = QtWidgets.QGraphicsView(scene)
+    image = QtGui.QImage(256, 256, QtGui.QImage.Format.Format_RGB32)
+    scene.addPixmap(QtGui.QPixmap.fromImage(image))
+    main_window.graphicsViewFrame = view
+    monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: True)
+
+    def circle_rgb():
+        mpa.update_brush_cursor(main_window, view, QtCore.QPointF(128, 128))
+        return getattr(main_window, mpa._CURSOR_ATTR)[0].pen().color().getRgb()[:3]
+
+    assert circle_rgb() == mpa._ADD_RGB
+    mpa.brush_settings(main_window)["erase"] = True
+    assert circle_rgb() == mpa._ERASE_RGB
+
+
+def test_floating_bar_defaults_to_bottom_right():
+    from PySide6 import QtWidgets
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    view = QtWidgets.QWidget()
+    view.resize(800, 600)
+    bar = QtWidgets.QFrame(view)
+    bar.resize(200, 50)
+    assert mpa.default_bar_position(bar) == (592, 542)
+    assert mpa.default_bar_position(QtWidgets.QFrame()) == (8, 8)

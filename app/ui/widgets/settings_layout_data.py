@@ -589,7 +589,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         },
         "AlignmentsCacheEnableToggle": {
             "level": 1,
-            "label": "Reuse Saved Alignments",
+            "label": "Reuse Stored Alignments",
             "default": True,
             "help": "Store every frame's detected faces (bbox, landmarks, embedding) and reuse them on seek, preview and render instead of re-detecting. Saved alongside the workspace/job as a '.alignments.npz' file. Entries are re-detected automatically when detector, landmark, recognition, smoothing or tracking settings or the target faces change. Turning this off clears the stored alignments.",
             "exec_function": control_actions.handle_alignments_cache_toggle,
@@ -600,6 +600,23 @@ SETTINGS_LAYOUT_DATA: Any = {
                 "help": "Discard all stored alignments and start over. Frames are re-detected as they are played, rendered or seeked. The '.alignments.npz' file is updated on the next workspace/job save.",
                 "exec_function": control_actions.clear_alignments_cache,
             },
+        },
+        "AlignmentsAutosaveToggle": {
+            "level": 1,
+            "label": "Autosave Alignments",
+            "default": True,
+            "help": "Write unsaved alignments (including manual edits and painted masks) to an autosave file every few minutes. After a crash, load the same video and use File > Recover Autosaved Alignments. Doesn't count as saving the workspace.",
+        },
+        "AlignmentsAutosaveIntervalSlider": {
+            "level": 1,
+            "label": "Autosave Every (minutes)",
+            "min_value": "1",
+            "max_value": "60",
+            "default": "2",
+            "step": 1,
+            "help": "How often unsaved alignments are autosaved.",
+            "parentToggle": "AlignmentsAutosaveToggle",
+            "requiredToggleValue": True,
         },
     },
     "Face Tracking": {

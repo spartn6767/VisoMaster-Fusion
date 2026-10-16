@@ -1134,6 +1134,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setWindowTitle(self.app_display_metadata.window_title)
 
     def keyPressEvent(self, event):
+        if getattr(self, "alignment_edit_enabled", False) or getattr(
+            self, "mask_paint_enabled", False
+        ):
+            from app.ui.widgets.actions import alignment_edit_actions
+
+            if alignment_edit_actions.edit_mode_key(self, event):
+                return
         match event.key():
             case QtCore.Qt.Key_Escape:
                 if getattr(self, "is_theatre_mode", False) and self.control.get(
@@ -1148,14 +1155,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.view_fullscreen(self)
             case QtCore.Qt.Key_T:
                 video_control_actions.toggle_theatre_mode(self)
-            case QtCore.Qt.Key_V:
-                video_control_actions.advance_video_slider_by_n_frames(self, n=1)
-            case QtCore.Qt.Key_C:
-                video_control_actions.rewind_video_slider_by_n_frames(self, n=1)
-            case QtCore.Qt.Key_D:
-                video_control_actions.advance_video_slider_by_n_frames(self)
-            case QtCore.Qt.Key_A:
-                video_control_actions.rewind_video_slider_by_n_frames(self)
             case QtCore.Qt.Key_Z:
                 from app.ui.widgets.actions import alignment_edit_actions
 
@@ -1181,6 +1180,20 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.move_slider_to_nearest_marker(self, "next")
             case QtCore.Qt.Key_Q:
                 video_control_actions.move_slider_to_nearest_marker(self, "previous")
+            case QtCore.Qt.Key_L:
+                video_control_actions.advance_video_slider_by_n_frames(self)
+            case QtCore.Qt.Key_K:
+                video_control_actions.rewind_video_slider_by_n_frames(self)
+            case QtCore.Qt.Key_N | QtCore.Qt.Key_P:
+                from app.ui.widgets.actions import alignment_edit_actions
+
+                alignment_edit_actions.jump_to_edited(
+                    self,
+                    1 if event.key() == QtCore.Qt.Key_N else -1,
+                    check=bool(
+                        event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier
+                    ),
+                )
             case QtCore.Qt.Key_S:
                 self.swapfacesButton.click()
 
@@ -1197,6 +1210,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             save_load_actions.save_current_workspace(
                 self, str(self.last_workspace_path)
             )
+            from app.ui.widgets.actions import alignment_autosave
+
+            alignment_autosave.on_close(self)
         self.video_processor.join_and_clear_threads()
         # Optionally handle the event if needed
         event.accept()

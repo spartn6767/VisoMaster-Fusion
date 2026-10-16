@@ -25,9 +25,16 @@ _BRUSH_BAR_ATTR = "_mask_brush_bar"
 _CLIPBOARD_ATTR = "mask_clipboard"
 _ACTIVE_FACE_ATTR = "_mask_active_face"
 _BAR_BUTTONS_ATTR = "_mask_bar_buttons"
+_CURSOR_ATTR = "_mask_brush_cursor"
 _ADD_RGB = (0, 220, 120)
 _ERASE_RGB = (255, 60, 60)
-DEFAULT_BRUSH = {"size": 40, "feather": 6, "opacity": 45, "erase": False}
+DEFAULT_BRUSH = {
+    "size": 40,
+    "feather": 6,
+    "opacity": 45,
+    "erase": False,
+    "frame_only": False,
+}
 
 
 def brush_settings(main_window: "MainWindow") -> dict[str, Any]:
@@ -46,6 +53,12 @@ def is_mask_paint_active(main_window: "MainWindow") -> bool:
 
 def set_mask_paint_mode(main_window: "MainWindow", enabled: bool) -> None:
     main_window.mask_paint_enabled = bool(enabled)
+    hide_brush_cursor(main_window)
+    view = getattr(main_window, "graphicsViewFrame", None)
+    if enabled and isinstance(view, QtWidgets.QGraphicsView):
+        view.viewport().setMouseTracking(True)
+    if enabled:
+        aea.focus_viewer(main_window)
     if enabled:
         main_window.alignment_edit_enabled = False
         aea.pause_for_editing(main_window)
@@ -56,7 +69,7 @@ def set_mask_paint_mode(main_window: "MainWindow", enabled: bool) -> None:
                 main_window,
                 "Paint Mask",
                 "Masks can be painted on a paused video frame with "
-                "Settings > Detectors > Reuse Saved Alignments on, and Face Compare, "
+                "Settings > Detectors > Reuse Stored Alignments on, and Face Compare, "
                 "Face Mask view, VR180 and Manual Rotation off.",
             )
     aea.refresh_alignment_overlay(main_window)
@@ -83,13 +96,22 @@ def sync_mask_paint_ui(main_window: "MainWindow") -> None:
 BAR_ACTIONS = (
     ("undo", "Undo", "Undo the last alignment or mask edit (Ctrl+Z)."),
     ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
-    ("copy", "Copy", "Copy the selected face's mask."),
-    ("paste", "Paste", "Paste the copied mask onto the selected face."),
-    ("previous", "< Paste", "Paste the mask from the nearest earlier stored frame."),
-    ("next", "Paste >", "Paste the mask from the nearest later stored frame."),
-    ("reset_frame", "Reset Frame", "Computed mask on this frame only."),
+    ("copy", "Copy", "Copy the selected face's mask (C)."),
+    ("paste", "Paste", "Paste the copied mask onto the selected face (V)."),
+    (
+        "previous",
+        "< Paste",
+        "Paste the mask from the nearest earlier stored frame (Z).",
+    ),
+    ("next", "Paste >", "Paste the mask from the nearest later stored frame (X)."),
+    ("reset_frame", "Reset Frame", "Computed mask on this frame only (M)."),
     ("reset_on", "Reset From Here", "Computed mask from this frame on."),
     ("reset_all", "Reset All", "Remove every painted mask in this video."),
+    (
+        "range",
+        "Apply to Range...",
+        "Use the selected face's mask on every frame from one frame to another.",
+    ),
 )
 
 
@@ -140,6 +162,11 @@ def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
         result = reset_mask_frame(main_window, frame_number, face_index)
     elif key == "reset_on":
         result = reset_mask(main_window, frame_number, face_index)
+    elif key == "range":
+        frames = _ask_range(main_window, frame_number)
+        if frames is not None:
+            result = apply_mask_to_range(main_window, frame_number, face_index, *frames)
+            _show_range_result(main_window, *frames, result)
     elif key in ("previous", "next"):
         source = _adjacent_source(
             main_window, frame_number, face_index, -1 if key == "previous" else 1
@@ -174,9 +201,18 @@ def _sync_bar_buttons(main_window: "MainWindow") -> None:
             next=_adjacent_source(main_window, frame_number, face_index, 1) is not None,
             reset_frame=has_mask,
             reset_on=has_mask,
+            range=_face_id(main_window, frame_number, face_index) is not None,
         )
     for key, button in buttons.items():
         button.setEnabled(bool(enabled.get(key, False)))
+
+
+def default_bar_position(bar: QtWidgets.QWidget) -> tuple[int, int]:
+    """Bottom-right corner of the viewer, until the user drags the bar."""
+    parent = bar.parentWidget()
+    if parent is None:
+        return (8, 8)
+    return (parent.width() - bar.width() - 8, parent.height() - bar.height() - 8)
 
 
 def clamp_bar_position(bar: QtWidgets.QWidget, point: QtCore.QPoint) -> QtCore.QPoint:
@@ -258,6 +294,17 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     erase.toggled.connect(lambda checked: brush.__setitem__("erase", bool(checked)))
     layout.addWidget(erase)
 
+    frame_only = QtWidgets.QCheckBox("This Frame Only", bar)
+    frame_only.setChecked(bool(brush.get("frame_only", False)))
+    frame_only.setToolTip(
+        "Strokes and pastes change only this frame; the next frame keeps the mask "
+        "it showed before."
+    )
+    frame_only.toggled.connect(
+        lambda checked: brush.__setitem__("frame_only", bool(checked))
+    )
+    layout.addWidget(frame_only)
+
     def add_spin(label: str, key: str, low: int, high: int, tip: str) -> None:
         layout.addWidget(QtWidgets.QLabel(label, bar))
         spin = QtWidgets.QSpinBox(bar)
@@ -295,7 +342,7 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     setattr(main_window, _BAR_BUTTONS_ATTR, bar_buttons)
 
     bar.adjustSize()
-    x, y = brush.get("bar_pos", (8, 8))
+    x, y = brush.get("bar_pos") or default_bar_position(bar)
     bar.move(clamp_bar_position(bar, QtCore.QPoint(int(x), int(y))))
     setattr(main_window, _BRUSH_BAR_ATTR, bar)
     return bar
@@ -306,6 +353,37 @@ def _face_kps_px(face: dict, frame_w: float, frame_h: float) -> np.ndarray:
     return np.asarray(face["kps_5"], dtype=np.float64)[:5] * (frame_w, frame_h)
 
 
+def _face_id(
+    main_window: "MainWindow", frame_number: int, face_index: int
+) -> Optional[str]:
+    faces = aea._frame_faces(main_window, frame_number)
+    return faces[face_index].get("face_id") if 0 <= face_index < len(faces) else None
+
+
+def _keep_frame_mask(
+    main_window: "MainWindow", face_id: Optional[str], frame_number: int
+) -> None:
+    """Stores the mask a face currently shows on ``frame_number`` as its own
+    keyframe, so edits on earlier frames stop carrying past it."""
+    if face_id is None:
+        return
+    store = main_window.alignments
+    for index, face in enumerate(aea._frame_faces(main_window, frame_number)):
+        if face.get("face_id") != face_id:
+            continue
+        if face.get("mask") is None:
+            held = store.effective_mask(frame_number, index)
+            store.update_face(
+                frame_number,
+                index,
+                1,
+                1,
+                mask=manual_masks.empty_mask() if held is None else held.copy(),
+                source=SOURCE_MANUAL,
+            )
+        return
+
+
 @aea.records_edit
 def set_mask(
     main_window: "MainWindow",
@@ -313,19 +391,31 @@ def set_mask(
     face_index: int,
     mask: Optional[np.ndarray],
     skip: bool = False,
+    frame_only: Optional[bool] = None,
 ) -> bool:
-    """Stores a mask keyframe on a face; the frame becomes manual (pinned)."""
+    """Stores a mask keyframe on a face; the frame becomes manual (pinned).
+    frame_only (default: the brush bar's This Frame Only) keeps the next frame
+    on the mask it showed before."""
     store = main_window.alignments
-    if not store.update_face(
-        frame_number,
-        face_index,
-        1,
-        1,
-        mask=mask,
-        mask_skip=skip,
-        source=SOURCE_MANUAL,
-    ):
-        return False
+    if frame_only is None:
+        frame_only = bool(brush_settings(main_window).get("frame_only")) and not skip
+    with store.edit([frame_number + 1] if frame_only else []):
+        if frame_only:
+            _keep_frame_mask(
+                main_window,
+                _face_id(main_window, frame_number, face_index),
+                frame_number + 1,
+            )
+        if not store.update_face(
+            frame_number,
+            face_index,
+            1,
+            1,
+            mask=mask,
+            mask_skip=skip,
+            source=SOURCE_MANUAL,
+        ):
+            return False
     aea._refresh(main_window)
     refresh_mask_overlay(main_window)
     return True
@@ -358,7 +448,13 @@ def apply_stroke(
 
 def reset_mask(main_window: "MainWindow", frame_number: int, face_index: int) -> bool:
     """Back to the computed mask for this face from this frame on."""
-    return set_mask(main_window, frame_number, face_index, manual_masks.empty_mask())
+    return set_mask(
+        main_window,
+        frame_number,
+        face_index,
+        manual_masks.empty_mask(),
+        frame_only=False,
+    )
 
 
 def reset_mask_frame(
@@ -371,6 +467,101 @@ def reset_mask_frame(
     return set_mask(
         main_window, frame_number, face_index, faces[face_index].get("mask"), skip=True
     )
+
+
+def apply_mask_to_range(
+    main_window: "MainWindow",
+    frame_number: int,
+    face_index: int,
+    start: int,
+    end: int,
+) -> int:
+    """Gives the same person the selected face's mask on every stored frame from
+    start to end; frames after end keep the mask they showed before. Returns how
+    many frames got it."""
+    face_id = _face_id(main_window, frame_number, face_index)
+    if face_id is None or end < start:
+        return 0
+    store = main_window.alignments
+    mask = store.effective_mask(frame_number, face_index)
+    mask = manual_masks.empty_mask() if mask is None else mask.copy()
+    frames = [n for n in store.frames() if start <= n <= end]
+    keyframe_set = False
+    applied = 0
+    with store.edit([*frames, end + 1]):
+        _keep_frame_mask(main_window, face_id, end + 1)
+        for n in frames:
+            for index, face in enumerate(aea._frame_faces(main_window, n)):
+                if face.get("face_id") != face_id:
+                    continue
+                store.update_face(
+                    n,
+                    index,
+                    1,
+                    1,
+                    mask=None if keyframe_set else mask,
+                    mask_skip=False,
+                    source=SOURCE_MANUAL,
+                )
+                keyframe_set = True
+                applied += 1
+                break
+    if not keyframe_set:
+        return 0
+    aea._refresh(main_window)
+    refresh_mask_overlay(main_window)
+    return applied
+
+
+def _show_range_result(main_window: "MainWindow", start: int, end: int, applied: int):
+    from app.ui.widgets.actions import common_actions
+
+    if applied:
+        common_actions.create_and_show_toast_message(
+            main_window,
+            "Mask Applied",
+            f"Mask applied to frames {start}\u2013{end} ({applied} frames with this face).",
+        )
+    else:
+        QtWidgets.QMessageBox.information(
+            main_window,
+            "Apply Mask to Range",
+            f"No stored frames with this face between {start} and {end}.",
+        )
+
+
+def _ask_range(
+    main_window: "MainWindow", frame_number: int
+) -> Optional[tuple[int, int]]:
+    """From/To frame dialog; defaults to this frame up to the next marker."""
+    slider = main_window.videoSeekSlider
+    last = int(slider.maximum())
+    markers = [m for m in getattr(slider, "markers_sorted", []) if m > frame_number]
+    dialog = QtWidgets.QDialog(main_window)
+    dialog.setWindowTitle("Apply Mask to Range")
+    form = QtWidgets.QFormLayout(dialog)
+    spins = []
+    for label, value in (
+        ("From frame", frame_number),
+        ("To frame", markers[0] - 1 if markers else last),
+    ):
+        spin = QtWidgets.QSpinBox(dialog)
+        spin.setRange(int(slider.minimum()), last)
+        spin.setValue(int(value))
+        form.addRow(label, spin)
+        spins.append(spin)
+    buttons = QtWidgets.QDialogButtonBox(
+        QtWidgets.QDialogButtonBox.StandardButton.Ok
+        | QtWidgets.QDialogButtonBox.StandardButton.Cancel,
+        dialog,
+    )
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    form.addRow(buttons)
+    if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+        return None
+    start, end = spins[0].value(), spins[1].value()
+    return (min(start, end), max(start, end))
 
 
 def reset_all_masks(main_window: "MainWindow") -> int:
@@ -562,9 +753,58 @@ def handle_mouse_press(
     return True
 
 
+def hide_brush_cursor(main_window: "MainWindow") -> None:
+    items = getattr(main_window, _CURSOR_ATTR, None)
+    setattr(main_window, _CURSOR_ATTR, None)
+    for item in items or ():
+        try:
+            if item.scene() is not None:
+                item.scene().removeItem(item)
+        except RuntimeError:  # already deleted with the scene
+            pass
+
+
+def update_brush_cursor(
+    main_window: "MainWindow", view: QtWidgets.QGraphicsView, pos: QtCore.QPointF
+) -> None:
+    """Circle showing the brush size (solid) and where feathering starts (dashed);
+    green to paint, red to erase (Erase ticked or Shift held)."""
+    hide_brush_cursor(main_window)
+    rect = aea._pixmap_rect(main_window)
+    if not is_mask_paint_active(main_window) or rect is None or not rect.contains(pos):
+        return
+    brush = brush_settings(main_window)
+    radius = float(brush["size"]) / 2.0
+    inner = radius - float(brush["feather"])
+    shift = bool(
+        QtWidgets.QApplication.keyboardModifiers()
+        & QtCore.Qt.KeyboardModifier.ShiftModifier
+    )
+    color = QtGui.QColor(*(_ERASE_RGB if bool(brush["erase"]) != shift else _ADD_RGB))
+    items = []
+    for r, style in (
+        (radius, QtCore.Qt.PenStyle.SolidLine),
+        (inner, QtCore.Qt.PenStyle.DashLine),
+    ):
+        if r <= 0 or (style == QtCore.Qt.PenStyle.DashLine and r >= radius):
+            continue
+        pen = QtGui.QPen(color, 1, style)
+        pen.setCosmetic(True)
+        item = QtWidgets.QGraphicsEllipseItem(pos.x() - r, pos.y() - r, 2 * r, 2 * r)
+        item.setPen(pen)
+        item.setZValue(aea._OVERLAY_Z + 1)
+        item.setAcceptedMouseButtons(QtCore.Qt.MouseButton.NoButton)
+        item.setData(0, aea.OVERLAY_ITEM_TAG)
+        view.scene().addItem(item)
+        items.append(item)
+    setattr(main_window, _CURSOR_ATTR, items)
+
+
 def handle_mouse_move(
     main_window: "MainWindow", view: QtWidgets.QGraphicsView, event: QtGui.QMouseEvent
 ) -> bool:
+    if is_mask_paint_active(main_window):
+        update_brush_cursor(main_window, view, view.mapToScene(event.pos()))
     stroke = getattr(main_window, _STROKE_ATTR, None)
     if stroke is None:
         return False

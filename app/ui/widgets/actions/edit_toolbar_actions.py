@@ -4,9 +4,10 @@ Mirrors the viewer's right-click menu for the frame-wide actions; per-face actio
 stay in the menu because they need a face under the cursor.
 """
 
+import os
 from typing import TYPE_CHECKING, Any, Optional
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.widgets.actions import alignment_edit_actions as aea
 from app.ui.widgets.actions import mask_paint_actions as mpa
@@ -15,6 +16,33 @@ if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 
 _BUTTONS_ATTR = "editToolbarButtons"
+
+
+def _saved_workspace(main_window: "MainWindow") -> str:
+    path = str(getattr(main_window, "current_workspace_path", "") or "")
+    return path if path and os.path.isfile(path) else ""
+
+
+def _save_alignments(main_window: "MainWindow") -> bool:
+    """Saves next to the current workspace without asking; with no saved workspace,
+    asks where to save it first. Confirms with a toast."""
+    from app.ui.widgets.actions import common_actions, save_load_actions
+
+    workspace = _saved_workspace(main_window)
+    if workspace:
+        save_load_actions.save_current_workspace(main_window, workspace)
+    else:
+        save_load_actions.save_current_workspace(main_window)
+        workspace = _saved_workspace(main_window)
+        if not workspace:
+            return False  # cancelled
+    common_actions.create_and_show_toast_message(
+        main_window,
+        "Alignments Saved",
+        f"Saved alignments for {len(main_window.alignments)} frames next to "
+        f"{os.path.basename(workspace)}.",
+    )
+    return True
 
 
 def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
@@ -51,6 +79,12 @@ def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
         "Paint add/erase strokes on faces (pauses playback).",
         checkable=True,
     ).toggled.connect(lambda on: mpa.set_mask_paint_mode(main_window, on))
+    add_button(
+        "save",
+        "Save Alignments",
+        "Save the alignments (with masks) with the current workspace; asks where "
+        "if the workspace hasn't been saved yet.",
+    ).clicked.connect(lambda: _save_alignments(main_window))
     separator = QtWidgets.QFrame(bar)
     separator.setFrameShape(QtWidgets.QFrame.Shape.VLine)
     layout.addWidget(separator)
@@ -81,6 +115,13 @@ def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
 def sync_edit_toolbar(main_window: "MainWindow") -> None:
     """Matches the toggles to the current modes and greys out actions that don't apply."""
     sync_alignment_bar(main_window)
+    face_compare = getattr(main_window, "actionView_FaceCompare", None)
+    if isinstance(face_compare, QtGui.QAction):
+        # X is "Paste >" while an edit mode is on.
+        editing = getattr(main_window, "alignment_edit_enabled", False) or getattr(
+            main_window, "mask_paint_enabled", False
+        )
+        face_compare.setShortcut(QtGui.QKeySequence() if editing else "X")
     buttons = getattr(main_window, _BUTTONS_ATTR, None)
     if not buttons:
         return
@@ -111,15 +152,31 @@ ALIGNMENT_FRAME_ACTIONS = (
     ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
     ("redetect", "Re-detect Frame", "Drop this frame's stored faces."),
     ("reset_all", "Reset All Alignments", "Discard every stored alignment."),
+    (
+        "check",
+        "Find Frames to Check",
+        "Mark frames where landmarks jump or a face briefly disappears "
+        "(Shift+N / Shift+P to step through them).",
+    ),
 )
 ALIGNMENT_FACE_ACTIONS = (
-    ("copy", "Copy", "Copy the selected face."),
-    ("paste", "Paste", "Paste the copied face (replaces the selected face)."),
-    ("previous", "< Paste", "Paste the face from the nearest earlier stored frame."),
-    ("next", "Paste >", "Paste the face from the nearest later stored frame."),
+    ("copy", "Copy", "Copy the selected face (C)."),
+    ("paste", "Paste", "Paste the copied face, replacing the selected face (V)."),
+    (
+        "previous",
+        "< Paste",
+        "Paste the face from the nearest earlier stored frame (Z).",
+    ),
+    ("next", "Paste >", "Paste the face from the nearest later stored frame (X)."),
     ("assign", "Assign to Target", "Pin the selected face to a target face."),
     ("add_target", "Add as Target", "Create a target face from the selected face."),
-    ("delete", "Delete Face", "Delete the selected face."),
+    ("delete", "Delete Face", "Delete the selected face (M)."),
+    (
+        "fill",
+        "Fill Between Edits",
+        "Blend the selected face between the previous frame you edited it on "
+        "and this frame.",
+    ),
 )
 
 
@@ -144,6 +201,8 @@ def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
         result = True
     elif key == "reset_all":
         result = aea.reset_all_alignments(main_window)
+    elif key == "check":
+        result = aea.find_frames_to_check(main_window)
     elif key == "paste":
         result = aea.paste_face(main_window, frame_number, face_index)
     elif face_index is not None:
@@ -162,6 +221,8 @@ def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
         elif key == "delete":
             aea.delete_face(main_window, frame_number, face_index)
             result = True
+        elif key == "fill":
+            result = aea.fill_between_edits(main_window, frame_number, face_index)
     sync_alignment_bar(main_window)
     return result
 
@@ -247,7 +308,9 @@ def _build_alignment_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
         )
     )
     bar.adjustSize()
-    x, y = getattr(main_window, _ALIGN_BAR_POS_ATTR, (8, 8))
+    x, y = getattr(main_window, _ALIGN_BAR_POS_ATTR, None) or mpa.default_bar_position(
+        bar
+    )
     bar.move(mpa.clamp_bar_position(bar, QtCore.QPoint(int(x), int(y))))
     setattr(main_window, _ALIGN_BAR_ATTR, bar)
     setattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, buttons)
@@ -273,6 +336,7 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
     enabled = {
         "redetect": frame_number in store,
         "reset_all": len(store) > 0,
+        "check": len(store) > 0,
         "undo": store.can_undo(),
         "redo": store.can_redo(),
         "paste": getattr(main_window, aea._CLIPBOARD_ATTR, None) is not None,
@@ -287,6 +351,8 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
             assign=True,
             add_target=True,
             delete=True,
+            fill=bool(store.edited_frames())
+            and store.edited_frames()[0] < frame_number - 1,
         )
     for key, button in getattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, {}).items():
         button.setEnabled(bool(enabled.get(key, False)))

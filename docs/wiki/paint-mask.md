@@ -4,7 +4,7 @@ Paint Mask lets you fix the swap mask by hand: add areas the swap should cover, 
 
 ## Before you start
 
-Paint Mask works on a paused video frame. It needs **Settings > Detectors > Reuse Saved Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Paint Mask on pauses playback.
+Paint Mask works on a paused video frame. It needs **Settings > Detectors > Reuse Stored Alignments** on, and Face Compare, Face Mask view, VR180 and Manual Rotation off. Turning Paint Mask on pauses playback.
 
 ## Painting
 
@@ -32,7 +32,7 @@ What an edit changes:
 - **Painting on a frame that shows a carried mask** (say frame 150): your stroke is added to the carried mask from frame 100 and stored as a new keyframe at 150. Frames 150–199 now use the new mask. Frames 100–149 keep frame 100's mask, and frame 200 onward is unchanged because frame 200 has its own keyframe.
 - **Painting on a keyframe itself** (frame 100): every frame that carries it changes too, so frames 100–199.
 - **Edits never flow backwards.** Frames before the frame you paint on are not changed.
-- **To fix only one frame** (say frame 150), first go to frame 151 and click **< Paste**. That stores the mask frame 151 currently shows as its own keyframe. Then go back to frame 150 and paint. Your fix stops at frame 150.
+- **To fix only one frame**, tick **This Frame Only** on the bar, then paint. Before your stroke is stored, the next frame gets the mask it showed until now as its own keyframe, so your fix stops at this frame. It needs the next frame to have stored alignments. Pastes work the same way while it's ticked; Reset From Here ignores it.
 - **Masks belong to a person.** A mask follows the target face the face was matched to, so a mask painted on one person never carries onto someone else. A face that isn't matched to any target face doesn't carry its mask to later frames.
 - **Each frame places the mask on its own landmarks.** If you fix a face's landmarks with Edit Alignments, the painted mask on that frame moves with them.
 
@@ -48,7 +48,18 @@ The buttons act on the selected face: the face you last painted or right-clicked
 | < Paste / Paste > | Copies the mask from the nearest earlier / later frame with stored alignments onto this frame as a keyframe. | Carries forward like a painted mask |
 | Reset Frame | Uses the computed mask on this frame only. | None: later frames keep the mask they had |
 | Reset From Here | Stores an empty keyframe, so this frame uses the computed mask. | Later frames use the computed mask too, up to the next painted keyframe |
+| Apply to Range... | Asks for a From and To frame (default: this frame up to the next marker) and gives the same person this face's mask on every stored frame in between. Painted keyframes inside the range are replaced. | Frames after the range keep the mask they showed before |
 | Reset All | Removes every painted mask in the video (asks first). Also on the edit toolbar as Reset All Masks. | All frames go back to the computed mask |
+
+## Brush circle
+
+While Paint Mask is on, a circle follows the pointer over the frame. The solid circle is the brush size; the dashed circle inside it shows where the feathered (soft) edge starts. It's green when you paint and red when you erase (Erase ticked, or Shift held).
+
+## Moving between frames
+
+While this mode is on, **K** / **L** step back / forward by the frame-step value (default 1), as they do outside the mode. (C and V do Copy and Paste here.)
+
+**Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Reset Frame. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
 
 ## Undo and redo
 
@@ -58,7 +69,7 @@ The buttons act on the selected face: the face you last painted or right-clicked
 - **Later frames follow:** undoing a stroke on a keyframe also puts back what the frames carrying it showed before.
 - **Jumps to the edit:** if the step was on another frame, the viewer goes to that frame first.
 - **Shared with Edit Alignments:** mask and alignment edits are one history, so Undo on either bar undoes the last edit of either kind.
-- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Saved Alignments in Settings.
+- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Stored Alignments in Settings.
 
 ## Saving
 
