@@ -446,6 +446,16 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "requiredSelectionValue": "Hair Segmenter",
             "help": "How far below the eyes the hair search area reaches, in face sizes. The top of the head is always included. Raise it for very long hair.",
         },
+        "HairMakeupIsolatePersonToggle": {
+            "level": 2,
+            "label": "Only This Person's Hair",
+            "default": True,
+            "parentToggle": "HairMakeupEnableToggle",
+            "requiredToggleValue": True,
+            "parentSelection": "HairMakeupMaskModelSelection",
+            "requiredSelectionValue": "Hair Segmenter",
+            "help": "Recolors only the hair of the person this face belongs to, so other people inside the hair area keep their own hair color. Turn off if it cuts off part of this person's hair. People touching or overlapping can still share a color.",
+        },
         "HairMakeupMaskThresholdDecimalSlider": {
             "level": 2,
             "label": "Mask Threshold",

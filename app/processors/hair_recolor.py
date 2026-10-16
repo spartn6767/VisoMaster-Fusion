@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
+import cv2
 import kornia.color as kc
 import kornia.geometry.transform as kgm
 import numpy as np
@@ -23,9 +24,11 @@ MAX_CHROMA_RATIO = 1.25
 
 CropKey = tuple[float, ...]
 ProbFn = Callable[[torch.Tensor], torch.Tensor]
+Head = tuple[float, float, float, float]
 
 FACE_PARSER = "Face Parser"
 HAIR_SEGMENTER = "Hair Segmenter"
+SEGMENTER_BACKGROUND_LABEL = 0
 SEGMENTER_HAIR_LABEL = 1
 SEGMENTER_SIZE = 256
 # How far the segmenter area reaches above the eyes, in face units.
@@ -266,17 +269,94 @@ def segmenter_area(parameters: dict) -> tuple[float, float]:
     )
 
 
+def isolate_person(parameters: dict) -> bool:
+    return bool(parameters.get("HairMakeupIsolatePersonToggle", True))
+
+
 def hair_area_key(parameters: dict) -> CropKey:
     """Identifies the hair mask model and its area, e.g. for cache invalidation."""
     if uses_segmenter(parameters):
-        return (SEGMENTER_KEY, *segmenter_area(parameters))
+        isolate = 1.0 if isolate_person(parameters) else 0.0
+        return (SEGMENTER_KEY, *segmenter_area(parameters), isolate)
     return hair_area(parameters)
 
 
 @torch.no_grad()
-def segmenter_hair_probability(logits: torch.Tensor) -> torch.Tensor:
-    """[1,6,H,W] selfie multiclass logits -> [1,H,W] hair probability."""
-    return torch.softmax(logits.float(), dim=1)[:, SEGMENTER_HAIR_LABEL]
+def segmenter_hair_probability(
+    logits: torch.Tensor, head: Optional[Head] = None
+) -> torch.Tensor:
+    """[1,6,H,W] selfie multiclass logits -> [1,H,W] hair probability.
+
+    With ``head`` (an ellipse around this face's head, in logit pixels), only
+    hair regions that reach the head are kept, so other people's hair inside
+    the search area is dropped.
+    """
+    hair = torch.softmax(logits.float(), dim=1)[:, SEGMENTER_HAIR_LABEL]
+    if head is None:
+        return hair
+    keep = _hair_on_head(hair[0].cpu().numpy(), head)
+    return hair * torch.from_numpy(keep).to(hair.device, hair.dtype).unsqueeze(0)
+
+
+# Hair probability above which pixels connect into one hair region. Kept low so
+# faint strands stay attached to the head.
+HAIR_CONNECT_THRESHOLD = 0.3
+# Head ellipse in face units: centre above the eyes, and its radii.
+HEAD_CENTRE_ABOVE_EYES = 0.5
+HEAD_RADIUS_X = 1.8
+HEAD_RADIUS_Y = 2.2
+# Dilation (logit pixels) of the kept regions, so soft hair edges are not cut.
+HAIR_EDGE_PX = 3
+
+
+def _hair_on_head(hair: np.ndarray, head: Head) -> np.ndarray:
+    """float32 0/1 map of the connected hair regions that overlap ``head``."""
+    connected = (hair > HAIR_CONNECT_THRESHOLD).astype(np.uint8)
+    _, labels = cv2.connectedComponents(connected, connectivity=8)
+    h, w = hair.shape
+    cx, cy, rx, ry = head
+    ys, xs = np.mgrid[0:h, 0:w]
+    inside = ((xs - cx) / max(rx, 1.0)) ** 2 + ((ys - cy) / max(ry, 1.0)) ** 2 <= 1.0
+    on_head = np.unique(labels[inside & (labels > 0)])
+    region = np.isin(labels, on_head).astype(np.uint8)
+    size = 2 * HAIR_EDGE_PX + 1
+    region = cv2.dilate(region, np.ones((size, size), np.uint8))
+    return region.astype(np.float32)
+
+
+def _five_points(kps: np.ndarray) -> np.ndarray:
+    # Makeup gets the 203-point landmarks when available, so map any layout to 5.
+    return faceutil.convert_face_landmark_x_to_5(np.asarray(kps, dtype=np.float32))
+
+
+def segmenter_head(
+    kps: np.ndarray, box: Sequence[int], size: int = SEGMENTER_SIZE
+) -> Head:
+    """(cx, cy, rx, ry) head ellipse in the pixels of the segmenter crop of ``box``."""
+    pts = _five_points(kps)
+    eyes = (pts[0] + pts[1]) / 2
+    mouth = (pts[3] + pts[4]) / 2
+    unit = max(
+        float(np.linalg.norm(pts[1] - pts[0])),
+        float(np.linalg.norm(mouth - eyes)),
+        1.0,
+    )
+    left, top, right, bottom = box
+    sx = size / (right - left)
+    sy = size / (bottom - top)
+    cx = (float(eyes[0] + mouth[0]) / 2 - left) * sx
+    cy = (float(eyes[1]) - HEAD_CENTRE_ABOVE_EYES * unit - top) * sy
+    return cx, cy, HEAD_RADIUS_X * unit * sx, HEAD_RADIUS_Y * unit * sy
+
+
+def _segmenter_prob_fn(
+    kps: np.ndarray,
+    box: Sequence[int],
+    parameters: dict,
+    segmenter_logits: Callable[[torch.Tensor], torch.Tensor],
+) -> ProbFn:
+    head = segmenter_head(kps, box) if isolate_person(parameters) else None
+    return lambda crop: segmenter_hair_probability(segmenter_logits(crop), head)
 
 
 def segmenter_box(
@@ -289,8 +369,7 @@ def segmenter_box(
     A face unit is the larger of eye distance and eye-to-mouth distance, which
     stays stable when the head turns.
     """
-    # Makeup gets the 203-point landmarks when available, so map any layout to 5.
-    pts = faceutil.convert_face_landmark_x_to_5(np.asarray(kps, dtype=np.float32))
+    pts = _five_points(kps)
     eyes = (pts[0] + pts[1]) / 2
     mouth = (pts[3] + pts[4]) / 2
     unit = max(
@@ -363,8 +442,9 @@ def hair_crop_and_prob(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(uint8 crop, [1,H,W] hair probability) of one face's hair area, uncached."""
     if uses_segmenter(parameters) and segmenter_logits is not None:
-        crop = crop_box(img, segmenter_box(kps, *segmenter_area(parameters)))
-        return crop, segmenter_hair_probability(segmenter_logits(crop))
+        box = segmenter_box(kps, *segmenter_area(parameters))
+        crop = crop_box(img, box)
+        return crop, _segmenter_prob_fn(kps, box, parameters, segmenter_logits)(crop)
     scale, vy_ratio = hair_area(parameters)
     crop, _, _ = faceutil.warp_face_by_face_landmark_x(
         img, kps, dsize=512, scale=scale, vy_ratio=vy_ratio
@@ -461,10 +541,11 @@ def _segmenter_frame_mask(
     x0, x1 = max(left, 0), min(right, w)
     if y1 <= y0 or x1 <= x0:
         return None
-    crop = crop_box(img, (left, top, right, bottom))
+    box = (left, top, right, bottom)
+    crop = crop_box(img, box)
     prob = hair_prob_for_crop(
         crop,
-        lambda c: segmenter_hair_probability(segmenter_logits(c)),
+        _segmenter_prob_fn(kps, box, parameters, segmenter_logits),
         hair_cache,
         key,
     )

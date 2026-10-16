@@ -523,7 +523,7 @@ def test_segmenter_masks_use_their_own_cache_key():
 
     assert hair_area_key({}) == (2.5, -0.125)
     seg_key = hair_area_key(SEGMENTER)
-    assert seg_key == (0.0, 7.0, 8.0) and seg_key != hair_area_key({})
+    assert seg_key == (0.0, 7.0, 8.0, 1.0) and seg_key != hair_area_key({})
 
     img, kps = _frame_with_face()
     saved: list[tuple] = []
@@ -562,7 +562,7 @@ def test_input_hair_color_samples_with_segmenter(monkeypatch):
     color = worker.sample_input_hair_color("in.png", dict(SEGMENTER), {})
     assert color is not None
     assert all(abs(c - t) <= 3 for c, t in zip(color, (150, 90, 40)))
-    assert ("in.png", 0.0, 7.0, 8.0, "RetinaFace") in worker._input_hair_colors
+    assert ("in.png", 0.0, 7.0, 8.0, 1.0, "RetinaFace") in worker._input_hair_colors
 
 
 def test_segmenter_box_accepts_203_point_landmarks():
@@ -572,3 +572,52 @@ def test_segmenter_box_accepts_203_point_landmarks():
     kps203 = np.zeros((203, 2), np.float32)
     kps203[[197, 198, 201, 48, 66]] = kps5
     assert segmenter_box(kps203, 7.0, 8.0) == segmenter_box(kps5, 7.0, 8.0)
+
+
+def _two_people_logits():
+    """Background everywhere, plus two separate people each with hair on top."""
+    logits = torch.zeros(1, 6, 256, 256)
+    logits[:, 0] = 10.0
+    for x0 in (20, 160):
+        logits[:, 0, 60:250, x0 : x0 + 70] = 0.0
+        logits[:, 1, 60:120, x0 : x0 + 70] = 10.0  # hair
+        logits[:, 3, 120:250, x0 : x0 + 70] = 10.0  # face/body
+    return logits
+
+
+def test_segmenter_keeps_only_hair_reaching_this_head():
+    from app.processors.hair_recolor import segmenter_hair_probability
+
+    logits = _two_people_logits()
+    both = segmenter_hair_probability(logits)[0]
+    assert both[90, 50] > 0.9 and both[90, 190] > 0.9
+    left = segmenter_hair_probability(logits, (55.0, 110.0, 30.0, 40.0))[0]
+    assert left[90, 50] > 0.9
+    assert float(left[:, 150:].max()) == 0.0
+
+
+def test_segmenter_without_hair_on_head_recolors_nothing():
+    from app.processors.hair_recolor import segmenter_hair_probability
+
+    prob = segmenter_hair_probability(_two_people_logits(), (128.0, 10.0, 8.0, 8.0))
+    assert float(prob.max()) == 0.0
+
+
+def test_segmenter_head_is_above_the_eyes_in_crop_pixels():
+    from app.processors.hair_recolor import segmenter_box, segmenter_head
+
+    kps = np.array(
+        [[270, 222], [318, 220], [296, 242], [283, 258], [318, 258]], np.float32
+    )
+    box = segmenter_box(kps, 7.0, 8.0)
+    cx, cy, rx, ry = segmenter_head(kps, box)
+    eye_y = (221 - box[1]) * 256 / (box[3] - box[1])
+    assert abs(cx - 128) < 3 and cy < eye_y and rx > 0 and ry > 0
+
+
+def test_isolate_person_toggle_changes_cache_key():
+    from app.processors.hair_recolor import hair_area_key
+
+    off = {**SEGMENTER, "HairMakeupIsolatePersonToggle": False}
+    assert hair_area_key(off) == (0.0, 7.0, 8.0, 0.0)
+    assert hair_area_key(off) != hair_area_key(SEGMENTER)
