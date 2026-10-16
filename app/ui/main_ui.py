@@ -29,6 +29,7 @@ from app.processors.utils import platform_support
 from app.processors.workers.function_worker import FunctionWorker
 from app.ui.widgets import widget_components
 from app.ui.widgets.event_filters import (
+    EditModeArrowKeyFilter,
     GraphicsViewEventFilter,
     VideoSeekSliderEventFilter,
     videoSeekSliderLineEditEventFilter,
@@ -297,6 +298,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self.graphicsViewFrame,
         )
         self.graphicsViewFrame.installEventFilter(graphics_event_filter)
+        self.edit_mode_arrow_filter = EditModeArrowKeyFilter(self, self)
+        QtWidgets.QApplication.instance().installEventFilter(
+            self.edit_mode_arrow_filter
+        )
         for scroll_bar in (
             self.graphicsViewFrame.horizontalScrollBar(),
             self.graphicsViewFrame.verticalScrollBar(),
