@@ -15,11 +15,9 @@ def _no_ui_refresh(monkeypatch):
 
 
 class _FakeVideoProcessor:
-    def __init__(self, processing=False, recording=False, segments=False):
+    def __init__(self, processing=False):
         self.file_type = "video"
         self.processing = processing
-        self.recording = recording
-        self.is_processing_segments = segments
         self.media_path = "clip.mp4"
         self.media_capture = None
         self.current_frame_number = 0
@@ -68,19 +66,3 @@ def test_find_faces_does_not_stop_idle_video(monkeypatch):
     card_actions.find_target_faces(_main_window(vp))
 
     assert vp.calls == ["seek", "read"]
-
-
-def test_find_faces_refuses_while_recording(monkeypatch):
-    toasts = []
-    monkeypatch.setattr(
-        card_actions.common_widget_actions,
-        "create_and_show_toast_message",
-        lambda *args, **kwargs: toasts.append(args[1]),
-    )
-    for vp in (
-        _FakeVideoProcessor(processing=True, recording=True),
-        _FakeVideoProcessor(processing=True, segments=True),
-    ):
-        card_actions.find_target_faces(_main_window(vp))
-        assert vp.calls == [] and vp.processing is True
-    assert toasts == ["Recording In Progress", "Recording In Progress"]

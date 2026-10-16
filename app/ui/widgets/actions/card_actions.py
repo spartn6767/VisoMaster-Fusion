@@ -175,20 +175,11 @@ def find_target_faces(main_window: "MainWindow"):
         return
 
     video_processor = main_window.video_processor
-    if video_processor.file_type == "video":
-        if video_processor.recording or video_processor.is_processing_segments:
-            common_widget_actions.create_and_show_toast_message(
-                main_window,
-                "Recording In Progress",
-                "Cannot find faces while recording.\nStop the recording first, then retry.",
-                style_type="warning",
-            )
-            return
-        if video_processor.processing:
-            # The playback threads share the capture; reading it concurrently
-            # crashes FFmpeg, so stop the preview before grabbing the frame.
-            video_processor.stop_processing()
-            print("[INFO] Stopped preview playback before finding faces.")
+    if video_processor.file_type == "video" and video_processor.processing:
+        # The playback threads share the capture; reading it concurrently
+        # crashes FFmpeg, so stop the preview before grabbing the frame.
+        video_processor.stop_processing()
+        print("[INFO] Stopped preview playback before finding faces.")
 
     control = main_window.control.copy()
     if video_processor.media_path:
