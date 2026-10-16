@@ -17,9 +17,10 @@ from PySide6 import QtCore, QtGui, QtWidgets
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 
-AUTOSAVE_INTERVAL_MS = 120_000
+CHECK_INTERVAL_MS = 60_000
 _TIMER_ATTR = "_alignments_autosave_timer"
 _REVISION_ATTR = "_alignments_autosave_revision"
+_LAST_ATTR = "_alignments_autosave_time"
 ACTION_ATTR = "actionRecover_Alignments"
 
 
@@ -32,7 +33,8 @@ def install_autosave(main_window: "MainWindow") -> None:
     if getattr(main_window, _TIMER_ATTR, None) is not None:
         return
     timer = QtCore.QTimer()
-    timer.setInterval(AUTOSAVE_INTERVAL_MS)
+    timer.setInterval(CHECK_INTERVAL_MS)
+    setattr(main_window, _LAST_ATTR, time.monotonic())
     timer.timeout.connect(partial(autosave_now, main_window))
     timer.start()
     setattr(main_window, _TIMER_ATTR, timer)
@@ -51,7 +53,14 @@ def _sync_action(main_window: "MainWindow") -> None:
 
 
 def autosave_now(main_window: "MainWindow") -> bool:
-    """Writes unsaved alignments to the autosave file; True if it wrote."""
+    """Writes unsaved alignments to the autosave file when Autosave Alignments is
+    on and its interval has passed; True if it wrote."""
+    control = getattr(main_window, "control", None) or {}
+    if not control.get("AlignmentsAutosaveToggle", True):
+        return False
+    minutes = max(1, int(control.get("AlignmentsAutosaveIntervalSlider", 2)))
+    if time.monotonic() - getattr(main_window, _LAST_ATTR, 0.0) < minutes * 60 - 1:
+        return False
     store = getattr(main_window, "alignments", None)
     if store is None or store.media_path is None or not store.has_unsaved_changes():
         return False
@@ -66,6 +75,7 @@ def autosave_now(main_window: "MainWindow") -> bool:
         print(f"[WARN] Alignments autosave failed: {e}")
         return False
     setattr(main_window, _REVISION_ATTR, revision)
+    setattr(main_window, _LAST_ATTR, time.monotonic())
     _sync_action(main_window)
     return True
 

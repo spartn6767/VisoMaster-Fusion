@@ -33,7 +33,7 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 
 ## Autosave
 
-Every 2 minutes, unsaved alignments (including masks) are written to an autosave file. If the app closes unexpectedly, load the same video and use **File > Recover Autosaved Alignments...** to get them back. The autosave doesn't count as saving, so you're still asked to save before switching videos. A normal exit deletes it once everything is saved.
+With **Settings > Detectors > Autosave Alignments** on (the default), unsaved alignments (including masks) are written to an autosave file every **Autosave Every** minutes (default 2). The **Save Alignments** button, left of Edit Alignments, saves them with the workspace right away (it asks where if the workspace hasn't been saved yet). If the app closes unexpectedly, load the same video and use **File > Recover Autosaved Alignments...** to get them back. The autosave doesn't count as saving, so you're still asked to save before switching videos. A normal exit deletes it once everything is saved.
 
 ## Moving between frames
 

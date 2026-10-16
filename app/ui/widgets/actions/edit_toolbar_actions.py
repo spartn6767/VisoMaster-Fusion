@@ -17,6 +17,12 @@ if TYPE_CHECKING:
 _BUTTONS_ATTR = "editToolbarButtons"
 
 
+def _save_alignments(main_window: "MainWindow") -> None:
+    from app.ui.widgets.actions import save_load_actions
+
+    save_load_actions.save_current_workspace(main_window)
+
+
 def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
     """Adds the toolbar row directly above the media buttons row."""
     existing = getattr(main_window, "editToolbar", None)
@@ -39,6 +45,12 @@ def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
         return button
 
     buttons: dict[str, QtWidgets.QPushButton] = {}
+    add_button(
+        "save",
+        "Save Alignments",
+        "Save the alignments (with masks) with the current workspace; asks where "
+        "if the workspace hasn't been saved yet.",
+    ).clicked.connect(lambda: _save_alignments(main_window))
     add_button(
         "edit",
         "Edit Alignments",

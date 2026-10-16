@@ -53,3 +53,28 @@ def test_autosave_keeps_unsaved_state_and_recovers(tmp_path, monkeypatch):
     store.save(str(tmp_path / "w.alignments.npz"))
     aas.on_close(main_window)
     assert not path.is_file()
+
+
+def test_autosave_respects_toggle_and_interval(tmp_path, monkeypatch):
+    store = AlignmentStore()
+    store.bind_media("/v.mp4")
+    store.add_face(
+        1, {"bbox": [0.1, 0.1, 0.3, 0.3], "kps_5": np.full((5, 2), 0.2)}, 1, 1
+    )
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(aas.time, "monotonic", lambda: clock["t"])
+    main_window = SimpleNamespace(
+        project_root_path=tmp_path,
+        alignments=store,
+        control={
+            "AlignmentsAutosaveToggle": False,
+            "AlignmentsAutosaveIntervalSlider": 5,
+        },
+        _alignments_autosave_time=1000.0,
+    )
+    assert not aas.autosave_now(main_window)
+    main_window.control["AlignmentsAutosaveToggle"] = True
+    clock["t"] += 120
+    assert not aas.autosave_now(main_window)
+    clock["t"] += 200
+    assert aas.autosave_now(main_window)

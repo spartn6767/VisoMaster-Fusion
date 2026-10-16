@@ -601,6 +601,23 @@ SETTINGS_LAYOUT_DATA: Any = {
                 "exec_function": control_actions.clear_alignments_cache,
             },
         },
+        "AlignmentsAutosaveToggle": {
+            "level": 1,
+            "label": "Autosave Alignments",
+            "default": True,
+            "help": "Write unsaved alignments (including manual edits and painted masks) to an autosave file every few minutes. After a crash, load the same video and use File > Recover Autosaved Alignments. Doesn't count as saving the workspace.",
+        },
+        "AlignmentsAutosaveIntervalSlider": {
+            "level": 1,
+            "label": "Autosave Every (minutes)",
+            "min_value": "1",
+            "max_value": "60",
+            "default": "2",
+            "step": 1,
+            "help": "How often unsaved alignments are autosaved.",
+            "parentToggle": "AlignmentsAutosaveToggle",
+            "requiredToggleValue": True,
+        },
     },
     "Face Tracking": {
         "FaceTrackingEnableToggle": {
