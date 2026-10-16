@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
 
 import kornia.color as kc
+import kornia.geometry.transform as kgm
 import numpy as np
 import torch
 import torch.nn.functional as F
 
+from app.processors.utils import faceutil
 from app.processors.video_utils.alignment_store import HAIR_PROB_SIZE
 
 HAIR_LABEL = 17
@@ -104,6 +107,22 @@ def feather_mask(mask: torch.Tensor, feather_px: float) -> torch.Tensor:
     return x.squeeze(0).clamp(0.0, 1.0)
 
 
+def _box_mean(x: torch.Tensor, radius: int) -> torch.Tensor:
+    """Mean over a (2r+1)^2 window clipped to the image, for [1,1,H,W] input.
+
+    Uses a summed-area table so large radii (full-resolution frames) stay cheap.
+    """
+    h, w = x.shape[-2:]
+    table = F.pad(x.double(), (1, 0, 1, 0)).cumsum(-1).cumsum(-2)[0, 0]
+    ys = torch.arange(h, device=x.device)
+    xs = torch.arange(w, device=x.device)
+    y0, y1 = (ys - radius).clamp(0, h), (ys + radius + 1).clamp(0, h)
+    x0, x1 = (xs - radius).clamp(0, w), (xs + radius + 1).clamp(0, w)
+    total = table[y1][:, x1] - table[y0][:, x1] - table[y1][:, x0] + table[y0][:, x0]
+    area = (y1 - y0).view(-1, 1) * (x1 - x0).view(1, -1)
+    return (total / area).to(x.dtype).view(1, 1, h, w)
+
+
 @torch.no_grad()
 def guided_refine_mask(
     img: torch.Tensor, mask: torch.Tensor, radius: int, eps: float = 1e-3
@@ -127,9 +146,7 @@ def guided_refine_mask(
         )
 
     def box(x: torch.Tensor) -> torch.Tensor:
-        return F.avg_pool2d(
-            x, 2 * radius + 1, stride=1, padding=radius, count_include_pad=False
-        )
+        return _box_mean(x, radius)
 
     mean_i = box(guide)
     mean_p = box(p)
@@ -217,3 +234,130 @@ def sample_hair_color(
     rgb = kc.lab_to_rgb(median.view(1, 3, 1, 1))[0, :, 0, 0].clamp(0.0, 1.0)
     r, g, b = (float(v) for v in rgb.mul(255.0).round().cpu())
     return r, g, b
+
+
+def hair_area(parameters: dict) -> CropKey:
+    """(scale, vy_ratio) of the crop the hair parser sees, from Hair Area sliders."""
+    return (
+        float(parameters.get("HairMakeupAreaSizeDecimalSlider", 2.5)),
+        float(parameters.get("HairMakeupAreaShiftDecimalSlider", -0.125)),
+    )
+
+
+@torch.no_grad()
+def hair_prob_for_crop(
+    crop: torch.Tensor,
+    parser_logits: Callable[[torch.Tensor], torch.Tensor],
+    hair_cache: Optional[HairMaskCache],
+    crop_key: CropKey,
+) -> torch.Tensor:
+    """[1,H,W] hair probability of a 512px crop, from the cache when possible."""
+    size = (int(crop.shape[-2]), int(crop.shape[-1]))
+    cached = hair_cache.load(crop_key) if hair_cache is not None else None
+    if cached is not None:
+        return prob_from_cache(cached, size, crop.device)
+    prob = hair_probability(parser_logits(crop))
+    if hair_cache is not None:
+        hair_cache.save(prob_to_cache(prob), crop_key)
+        smoothed = hair_cache.load(crop_key)
+        if smoothed is not None:
+            prob = prob_from_cache(smoothed, size, crop.device)
+    return prob
+
+
+@torch.no_grad()
+def mask_to_frame_roi(
+    mask: torch.Tensor, M_c2o: np.ndarray, frame_hw: Sequence[int]
+) -> Optional[tuple[torch.Tensor, tuple[int, int, int, int]]]:
+    """Warp a [1,h,w] crop mask into the frame.
+
+    Returns the mask over the crop's bounding box in the frame and that box as
+    (top, bottom, left, right), or None when the crop is off-frame.
+    """
+    frame_h, frame_w = int(frame_hw[0]), int(frame_hw[1])
+    m = np.asarray(M_c2o, dtype=np.float32)[:2]
+    h, w = mask.shape[-2:]
+    corners = np.array([[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]], np.float32)
+    pts = corners @ m[:, :2].T + m[:, 2]
+    left = max(math.floor(float(pts[:, 0].min())), 0)
+    top = max(math.floor(float(pts[:, 1].min())), 0)
+    right = min(math.ceil(float(pts[:, 0].max())) + 1, frame_w)
+    bottom = min(math.ceil(float(pts[:, 1].max())) + 1, frame_h)
+    if right <= left or bottom <= top:
+        return None
+    local = m.copy()
+    local[0, 2] -= left
+    local[1, 2] -= top
+    warped = kgm.warp_affine(
+        mask.float().unsqueeze(0),
+        torch.from_numpy(local).to(mask.device).unsqueeze(0),
+        dsize=(bottom - top, right - left),
+        mode="bilinear",
+        padding_mode="zeros",
+        align_corners=True,
+    )[0].clamp(0.0, 1.0)
+    return warped, (top, bottom, left, right)
+
+
+@torch.no_grad()
+def recolor_hair_in_frame(
+    img: torch.Tensor,
+    kps: np.ndarray,
+    parameters: dict,
+    parser_logits: Callable[[torch.Tensor], torch.Tensor],
+    hair_cache: Optional[HairMaskCache] = None,
+) -> torch.Tensor:
+    """Recolor one face's hair directly in the [3,H,W] frame.
+
+    The parser finds hair in a 512px crop sized by the Hair Area sliders (which
+    can reach well past the face-editor crop, e.g. long hair); the mask is then
+    warped back and the recolor runs on the frame's own pixels, so strands stay
+    sharp however wide the crop is.
+    """
+    crop_key = hair_area(parameters)
+    crop, _, M_c2o = faceutil.warp_face_by_face_landmark_x(
+        img, kps, dsize=512, scale=crop_key[0], vy_ratio=crop_key[1]
+    )
+    if crop.dtype != torch.uint8:
+        crop = crop.round().clamp(0, 255).to(torch.uint8)
+    prob = hair_prob_for_crop(crop, parser_logits, hair_cache, crop_key)
+    mask = mask_from_probability(
+        prob,
+        threshold=parameters.get("HairMakeupMaskThresholdDecimalSlider", 0.5),
+        feather_px=parameters.get("HairMakeupEdgeSoftnessSlider", 4),
+    )
+    placed = mask_to_frame_roi(mask, M_c2o, img.shape[-2:])
+    if placed is None:
+        return img
+    frame_mask, (top, bottom, left, right) = placed
+    if float(frame_mask.max()) <= 0.0:
+        return img
+
+    roi = img[:, top:bottom, left:right]
+    roi_u8 = (
+        roi if roi.dtype == torch.uint8 else roi.round().clamp(0, 255).to(torch.uint8)
+    )
+    refine_radius = int(parameters.get("HairMakeupStrandRefineSlider", 0))
+    if refine_radius > 0:
+        # The slider is in crop pixels; scale it to frame pixels.
+        frame_px = math.sqrt(abs(float(np.linalg.det(np.asarray(M_c2o)[:2, :2]))))
+        frame_mask = guided_refine_mask(
+            roi_u8, frame_mask, max(1, int(round(refine_radius * frame_px)))
+        )
+    color = [
+        parameters.get("HairMakeupRedSlider", 0),
+        parameters.get("HairMakeupGreenSlider", 0),
+        parameters.get("HairMakeupBlueSlider", 0),
+    ]
+    recolored = recolor_hair_lab(
+        roi_u8,
+        frame_mask,
+        color,
+        strength=parameters.get("HairMakeupStrengthDecimalSlider", 0.8),
+        lightness=parameters.get("HairMakeupLightnessDecimalSlider", 0.5),
+    )
+    out = img.clone()
+    out[:, top:bottom, left:right] = torch.where(
+        frame_mask > 0, recolored.to(img.dtype), roi
+    )
+    return out

@@ -203,9 +203,7 @@ def test_hair_probs_persist_in_sidecar(tmp_path):
 
 
 def test_cache_hit_skips_face_parser():
-    from types import SimpleNamespace
-
-    from app.processors.face_editors import FaceEditors
+    from app.processors.hair_recolor import hair_prob_for_crop
 
     calls: list[str] = []
 
@@ -213,22 +211,6 @@ def test_cache_hit_skips_face_parser():
         calls.append("logits")
         return torch.zeros(1, 19, 512, 512)
 
-    def parser_labels(img):
-        calls.append("labels")
-        return torch.zeros(512, 512, dtype=torch.long)
-
-    editors = FaceEditors.__new__(FaceEditors)
-    editors.function_worker = SimpleNamespace(
-        get_faceparser_logits=parser_logits, get_faceparser_labels=parser_labels
-    )
-    params = {
-        "HairMakeupEnableToggle": True,
-        "HairMakeupRedSlider": 200,
-        "HairMakeupGreenSlider": 30,
-        "HairMakeupBlueSlider": 30,
-        "FaceEditorCropScaleDecimalSlider": CROP[0],
-        "FaceEditorVYRatioDecimalSlider": CROP[1],
-    }
     saved: list[tuple] = []
     store_map: dict[tuple, np.ndarray] = {}
     cache = HairMaskCache(
@@ -237,15 +219,14 @@ def test_cache_hit_skips_face_parser():
     )
     img = torch.full((3, 512, 512), 40, dtype=torch.uint8)
 
-    editors.apply_face_makeup(img, params, hair_cache=cache)
+    hair_prob_for_crop(img, parser_logits, cache, CROP)
     assert calls == ["logits"] and saved == [CROP]
 
     calls.clear()
     store_map[CROP] = np.ones((HAIR_PROB_SIZE, HAIR_PROB_SIZE), dtype=np.float32)
-    out, mask = editors.apply_face_makeup(img, params, hair_cache=cache)
+    prob = hair_prob_for_crop(img, parser_logits, cache, CROP)
     assert calls == []
-    assert not torch.equal(out, img)
-    assert mask.max() > 0.9
+    assert prob.shape == (1, 512, 512) and prob.min() > 0.99
 
 
 # ---------------------------------------------------------------------------
@@ -292,15 +273,15 @@ def test_sample_input_hair_color_is_cached_per_image_and_crop():
 
     worker._compute_input_hair_color = compute
     params = {
-        "FaceEditorCropScaleDecimalSlider": 2.5,
-        "FaceEditorVYRatioDecimalSlider": -0.125,
+        "HairMakeupAreaSizeDecimalSlider": 2.5,
+        "HairMakeupAreaShiftDecimalSlider": -0.125,
     }
     assert worker.sample_input_hair_color("a.png", params, {}) == (10.0, 20.0, 30.0)
     assert worker.sample_input_hair_color("a.png", params, {}) == (10.0, 20.0, 30.0)
     assert worker.sample_input_hair_color("b.png", params, {}) is None
     assert worker.sample_input_hair_color("b.png", params, {}) is None
     assert len(calls) == 2
-    params["FaceEditorCropScaleDecimalSlider"] = 3.0
+    params["HairMakeupAreaSizeDecimalSlider"] = 3.0
     worker.sample_input_hair_color("a.png", params, {})
     assert len(calls) == 3
 
@@ -350,8 +331,8 @@ def test_compute_input_hair_color_end_to_end(monkeypatch):
 
     worker.get_faceparser_logits = logits
     params = {
-        "FaceEditorCropScaleDecimalSlider": 2.5,
-        "FaceEditorVYRatioDecimalSlider": -0.125,
+        "HairMakeupAreaSizeDecimalSlider": 2.5,
+        "HairMakeupAreaShiftDecimalSlider": -0.125,
     }
     color = worker.sample_input_hair_color("in.png", params, {})
     assert color is not None
@@ -368,3 +349,87 @@ def test_neutral_shadows_under_warm_hair_do_not_turn_blue():
         out = recolor_hair_lab(img, full, color, strength=1.0, lightness=0.5)
         lab = kc.rgb_to_lab(out.float().div(255).unsqueeze(0))[0]
         assert lab[2].min() > -1.0, color
+
+
+# ---------------------------------------------------------------------------
+# Full-frame hair recolor (Hair Area)
+# ---------------------------------------------------------------------------
+
+
+def test_box_mean_matches_avg_pool():
+    import torch.nn.functional as F
+
+    from app.processors.hair_recolor import _box_mean
+
+    x = torch.rand(1, 1, 23, 17)
+    for r in (1, 3, 12):
+        ref = F.avg_pool2d(x, 2 * r + 1, stride=1, padding=r, count_include_pad=False)
+        assert torch.allclose(_box_mean(x, r), ref, atol=1e-5)
+
+
+def test_mask_to_frame_roi_places_crop_mask_in_frame():
+    from app.processors.hair_recolor import mask_to_frame_roi
+
+    mask = torch.ones(1, 64, 64)
+    m_c2o = np.array([[0.5, 0.0, 10.0], [0.0, 0.5, 20.0]], dtype=np.float32)
+    placed = mask_to_frame_roi(mask, m_c2o, (100, 100))
+    assert placed is not None
+    roi, (top, bottom, left, right) = placed
+    assert (top, left) == (20, 10)
+    assert roi.shape == (1, bottom - top, right - left)
+    assert roi[0, 2:28, 2:28].min() > 0.99
+    assert mask_to_frame_roi(mask, m_c2o, (10, 5)) is None
+
+
+def _frame_with_face():
+    img = torch.zeros(3, 400, 300, dtype=torch.uint8)
+    img[0], img[1], img[2] = 90, 60, 40
+    kps = np.array(
+        [[130, 75], [170, 75], [150, 95], [135, 115], [165, 115]], dtype=np.float32
+    )
+    return img, kps
+
+
+def _hair_everywhere(crop):
+    assert crop.shape == (3, 512, 512) and crop.dtype == torch.uint8
+    logits = torch.zeros(1, 19, 512, 512)
+    logits[:, 17] = 10.0
+    return logits
+
+
+def test_hair_area_reaches_long_hair_past_face_crop():
+    from app.processors.hair_recolor import recolor_hair_in_frame
+
+    img, kps = _frame_with_face()
+    params = {
+        "HairMakeupRedSlider": 30,
+        "HairMakeupGreenSlider": 60,
+        "HairMakeupBlueSlider": 200,
+        "HairMakeupStrengthDecimalSlider": 1.0,
+        "HairMakeupLightnessDecimalSlider": 0.0,
+    }
+    default = recolor_hair_in_frame(img, kps, params, _hair_everywhere)
+    assert default.dtype == torch.uint8 and default.shape == img.shape
+    assert not torch.equal(default[:, 90, 150], img[:, 90, 150])
+    assert torch.equal(default[:, 300, 150], img[:, 300, 150])
+
+    wide = dict(
+        params,
+        HairMakeupAreaSizeDecimalSlider=6.0,
+        HairMakeupAreaShiftDecimalSlider=0.5,
+        HairMakeupStrandRefineSlider=4,
+    )
+    out = recolor_hair_in_frame(img, kps, wide, _hair_everywhere)
+    assert not torch.equal(out[:, 300, 150], img[:, 300, 150])
+    assert int(out[2, 300, 150]) > int(img[2, 300, 150])
+
+
+def test_hair_recolor_in_frame_keeps_float_frames_float():
+    from app.processors.hair_recolor import recolor_hair_in_frame
+
+    img, kps = _frame_with_face()
+    out = recolor_hair_in_frame(
+        img.float(), kps, {"HairMakeupBlueSlider": 200}, _hair_everywhere
+    )
+    assert out.dtype == torch.float32
+    assert out[2, 90, 150] > img[2, 90, 150].float()

@@ -6,6 +6,7 @@ from torchvision.transforms import v2
 import kornia.geometry.transform as kgm
 
 from app.processors.utils import faceutil
+from app.processors.hair_recolor import recolor_hair_in_frame
 
 if TYPE_CHECKING:
     from app.processors.models_processor import ModelsProcessor
@@ -1466,61 +1467,67 @@ class FrameEdits:
         Returns:
             torch.Tensor: Image with makeup applied.
         """
-        if (
+        hair_on = bool(parameters.get("HairMakeupEnableToggle", False))
+        other_on = bool(
             parameters["FaceMakeupEnableToggle"]
-            or parameters["HairMakeupEnableToggle"]
             or parameters["EyeBrowsMakeupEnableToggle"]
             or parameters["LipsMakeupEnableToggle"]
-        ):
-            if kps is not None and len(kps) >= 5:
-                lmk_crop = kps
-            else:
-                return img
+        )
+        if not (hair_on or other_on) or kps is None or len(kps) < 5:
+            return img
+        lmk_crop = kps
 
-            # Use the interpolation mode passed from FrameWorker, or default to BILINEAR
-            interp_mode = (
-                self.interpolation_expression_faceeditor_back
-                if self.interpolation_expression_faceeditor_back is not None
-                else v2.InterpolationMode.BILINEAR
-            )
-
-            # Prepare Image
-            original_face_512, M_o2c, M_c2o = faceutil.warp_face_by_face_landmark_x(
+        if hair_on:
+            img = recolor_hair_in_frame(
                 img,
                 lmk_crop,
-                dsize=512,
-                scale=parameters["FaceEditorCropScaleDecimalSlider"],
-                vy_ratio=parameters["FaceEditorVYRatioDecimalSlider"],
-                interpolation=interp_mode,
+                parameters,
+                self.function_worker.get_faceparser_logits,
+                hair_cache=kwargs.get("hair_cache"),
             )
+        if not other_on:
+            return img
 
-            # 1. The call generates both the makeup image AND the exact mask from FaceParser
-            out, mask_out = self.function_worker.apply_face_makeup(
-                original_face_512, parameters, hair_cache=kwargs.get("hair_cache")
-            )
+        # Use the interpolation mode passed from FrameWorker, or default to BILINEAR
+        interp_mode = (
+            self.interpolation_expression_faceeditor_back
+            if self.interpolation_expression_faceeditor_back is not None
+            else v2.InterpolationMode.BILINEAR
+        )
 
-            # 2. Failsafe: Ensure the output tensor remains exactly 512x512
-            if out.shape[-1] != 512:
-                out = v2.Resize((512, 512), antialias=True)(out)
+        # Prepare Image
+        original_face_512, M_o2c, M_c2o = faceutil.warp_face_by_face_landmark_x(
+            img,
+            lmk_crop,
+            dsize=512,
+            scale=parameters["FaceEditorCropScaleDecimalSlider"],
+            vy_ratio=parameters["FaceEditorVYRatioDecimalSlider"],
+            interpolation=interp_mode,
+        )
 
-            # 3. Quality & Safety Fix: We use the TRUE makeup mask (mask_out)
-            # instead of the generic LivePortrait square mask to preserve original skin quality.
-            if mask_out is None:
-                mask_out = torch.ones(
-                    (1, 512, 512), dtype=torch.float32, device=out.device
-                )
-            elif mask_out.shape[-1] != 512:
-                mask_out = v2.Resize((512, 512), antialias=True)(mask_out)
+        # 1. The call generates both the makeup image AND the exact mask from FaceParser
+        out, mask_out = self.function_worker.apply_face_makeup(
+            original_face_512, parameters
+        )
 
-            # 4. Soften the image and blur the mask edges for smooth blending
-            out = torch.clamp(torch.div(out, 255.0), 0, 1).type(torch.float32)
-            gauss = v2.GaussianBlur(kernel_size=5 * 2 + 1, sigma=(5 + 1) * 0.2)
-            mask_crop = gauss(mask_out)
+        # 2. Failsafe: Ensure the output tensor remains exactly 512x512
+        if out.shape[-1] != 512:
+            out = v2.Resize((512, 512), antialias=True)(out)
 
-            # 5. Final pasting: Only the makeup pixels are pasted, keeping the original skin intact
-            img = faceutil.paste_back_adv(out, M_c2o, img, mask_crop)
+        # 3. Quality & Safety Fix: We use the TRUE makeup mask (mask_out)
+        # instead of the generic LivePortrait square mask to preserve original skin quality.
+        if mask_out is None:
+            mask_out = torch.ones((1, 512, 512), dtype=torch.float32, device=out.device)
+        elif mask_out.shape[-1] != 512:
+            mask_out = v2.Resize((512, 512), antialias=True)(mask_out)
 
-        return img
+        # 4. Soften the image and blur the mask edges for smooth blending
+        out = torch.clamp(torch.div(out, 255.0), 0, 1).type(torch.float32)
+        gauss = v2.GaussianBlur(kernel_size=5 * 2 + 1, sigma=(5 + 1) * 0.2)
+        mask_crop = gauss(mask_out)
+
+        # 5. Final pasting: Only the makeup pixels are pasted, keeping the original skin intact
+        return faceutil.paste_back_adv(out, M_c2o, img, mask_crop)
 
     @torch.no_grad()
     def apply_face_shaping_gpu(

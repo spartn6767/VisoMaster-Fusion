@@ -20,7 +20,11 @@ from app.processors.face_reaging import FaceReaging
 from app.processors.perform_recast import PerformRecast
 from app.processors.face_denoiser import FaceDenoiser
 from app.processors.frame_edits import FrameEdits
-from app.processors.hair_recolor import hair_probability, sample_hair_color
+from app.processors.hair_recolor import (
+    hair_area,
+    hair_probability,
+    sample_hair_color,
+)
 from app.processors.models_data import arcface_mapping_model_dict
 from app.processors.utils import faceutil, platform_support
 
@@ -471,12 +475,8 @@ class FunctionWorker:
             img, kps, parameters, control, hair_cache=hair_cache
         )
 
-    def apply_face_makeup(
-        self, img: Any, parameters: dict, hair_cache: Any = None
-    ) -> Any:
-        return self.face_editors.apply_face_makeup(
-            img, parameters, hair_cache=hair_cache
-        )
+    def apply_face_makeup(self, img: Any, parameters: dict) -> Any:
+        return self.face_editors.apply_face_makeup(img, parameters)
 
     def lp_motion_extractor(
         self, img: np.ndarray, face_editor_type: str = "Human-Face", **kwargs: Any
@@ -590,10 +590,11 @@ class FunctionWorker:
         self, image_path: str, parameters: dict, control: dict
     ) -> Optional[Tuple[float, float, float]]:
         """Hair color of an input face image, sampled once per image and crop."""
+        scale, vy_ratio = hair_area(parameters)
         key = (
             image_path,
-            float(parameters.get("FaceEditorCropScaleDecimalSlider", 2.5)),
-            float(parameters.get("FaceEditorVYRatioDecimalSlider", -0.125)),
+            scale,
+            vy_ratio,
             str(control.get("DetectorModelSelection", "RetinaFace")),
         )
         with self._input_hair_lock:
@@ -601,7 +602,7 @@ class FunctionWorker:
                 return self._input_hair_colors[key]
         color = None
         try:
-            color = self._compute_input_hair_color(image_path, key[1], key[2], control)
+            color = self._compute_input_hair_color(image_path, scale, vy_ratio, control)
         except Exception as e:
             print(f"[WARN] Sampling input hair color failed for {image_path}: {e}")
         else:
