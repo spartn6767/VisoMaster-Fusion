@@ -105,17 +105,14 @@ def add_widgets_to_tab_layout(
                     widget_components.ParameterResetDefaultButton(related_widget=widget)
                 )
 
-                _toggle_row_widgets: list = [
-                    widget,
-                    label,
-                    widget.reset_default_button,
-                ]
+                _toggle_row_widgets: list = [widget, label]
                 if "action_button" in widget_data:
                     _toggle_row_widgets.append(
                         create_layout_action_button(
                             cast(dict, widget_data["action_button"])
                         )
                     )
+                _toggle_row_widgets.append(widget.reset_default_button)
                 row_widget, horizontal_layout = add_horizontal_layout_to_category(
                     category_layout, *_toggle_row_widgets
                 )
@@ -395,16 +392,12 @@ def add_widgets_to_tab_layout(
                 widget.reset_default_button = (
                     widget_components.ParameterResetDefaultButton(related_widget=widget)
                 )
-                _slider_row_widgets: list = [
-                    label,
-                    widget,
-                    widget.line_edit,
-                    widget.reset_default_button,
-                ]
+                _slider_row_widgets: list = [label, widget, widget.line_edit]
                 if "action_button" in widget_data:
                     _ab_data: dict = cast(dict, widget_data["action_button"])
                     _action_btn = create_layout_action_button(_ab_data)
                     _slider_row_widgets.append(_action_btn)
+                _slider_row_widgets.append(widget.reset_default_button)
                 row_widget, horizontal_layout = add_horizontal_layout_to_category(
                     category_layout,
                     *_slider_row_widgets,
