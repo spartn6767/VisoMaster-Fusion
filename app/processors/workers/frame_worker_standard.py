@@ -1,4 +1,3 @@
-import os
 import math
 import threading
 from typing import TYPE_CHECKING, Any, cast
@@ -266,17 +265,6 @@ class StandardProcessor:
                 ),
             )
 
-        def with_hair_color(data: dict, color: Any) -> dict:
-            if color is None:
-                return data
-            r, g, b = (int(round(c)) for c in color)
-            return {
-                **data,
-                "HairMakeupRedSlider": r,
-                "HairMakeupGreenSlider": g,
-                "HairMakeupBlueSlider": b,
-            }
-
         def makeup_params_for(target: Any, params: Any, control: Any) -> dict:
             data = params.data
             if not (
@@ -284,28 +272,16 @@ class StandardProcessor:
                 and data.get("HairMakeupUseInputColorToggle", False)
             ):
                 return data
-            fw = self.worker.function_worker
-            target_id = str(getattr(target, "face_id", ""))
-            image_path = str(data.get("HairMakeupColorImageText", "") or "").strip()
-            image_path = image_path.strip('"')
-            if image_path:
-                if os.path.isfile(image_path):
-                    return with_hair_color(
-                        data, fw.sample_input_hair_color(image_path, data, control)
-                    )
-                fw.note_input_hair_unavailable(
-                    ("file", image_path), f"Hair Color Image not found: {image_path}"
-                )
             input_faces = self.worker.main_window.input_faces
             assigned = getattr(target, "assigned_input_faces", None) or {}
+            target_id = str(getattr(target, "face_id", ""))
             if not assigned:
                 merged = getattr(target, "assigned_merged_embeddings", None)
                 self.worker.function_worker.note_input_hair_unavailable(
                     (target_id, "none"),
                     f"target face {target_id} has "
                     + (
-                        "only a merged embedding (no image to sample; "
-                        "set a Hair Color Image)"
+                        "only a merged embedding (no image to sample)"
                         if merged
                         else "no input face assigned"
                     ),
@@ -319,9 +295,18 @@ class StandardProcessor:
                         f"input face {input_id} has no source image path",
                     )
                     continue
-                return with_hair_color(
-                    data, fw.sample_input_hair_color(str(path), data, control)
+                color = self.worker.function_worker.sample_input_hair_color(
+                    str(path), data, control
                 )
+                if color is None:
+                    break
+                r, g, b = (int(round(c)) for c in color)
+                return {
+                    **data,
+                    "HairMakeupRedSlider": r,
+                    "HairMakeupGreenSlider": g,
+                    "HairMakeupBlueSlider": b,
+                }
             return data
 
         # --- DETECTION PHASE ---

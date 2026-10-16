@@ -553,34 +553,8 @@ def add_widgets_to_tab_layout(
                 widget.reset_default_button = (
                     widget_components.ParameterResetDefaultButton(related_widget=widget)
                 )
-                row_widgets: list = [label, widget]
-                if widget_data.get("browse_image"):
-
-                    def on_browse_image(
-                        text_widget: widget_components.ParameterText,
-                        text_widget_name,
-                        widget_data,
-                    ):
-                        path, _ = QtWidgets.QFileDialog.getOpenFileName(
-                            main_window,
-                            cast(str, widget_data.get("label", "Select image")),
-                            text_widget.text(),
-                            "Images (*.png *.jpg *.jpeg *.bmp *.webp *.tif *.tiff)",
-                        )
-                        if path:
-                            text_widget.setText(path)
-                            on_enter_pressed(text_widget, text_widget_name, widget_data)
-
-                    browse_button = QtWidgets.QPushButton("...")
-                    browse_button.setFixedWidth(28)
-                    browse_button.setToolTip("Choose an image")
-                    browse_button.clicked.connect(
-                        partial(on_browse_image, widget, widget_name, widget_data)
-                    )
-                    row_widgets.append(browse_button)
-                row_widgets.append(widget.reset_default_button)
                 row_widget, horizontal_layout = add_horizontal_layout_to_category(
-                    category_layout, *row_widgets
+                    category_layout, label, widget, widget.reset_default_button
                 )
 
                 if data_type == "parameter":
