@@ -1155,10 +1155,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.view_fullscreen(self)
             case QtCore.Qt.Key_T:
                 video_control_actions.toggle_theatre_mode(self)
-            case QtCore.Qt.Key_D:
-                video_control_actions.advance_video_slider_by_n_frames(self)
-            case QtCore.Qt.Key_A:
-                video_control_actions.rewind_video_slider_by_n_frames(self)
             case QtCore.Qt.Key_Z:
                 from app.ui.widgets.actions import alignment_edit_actions
 

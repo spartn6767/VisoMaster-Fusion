@@ -13,7 +13,6 @@ Single-letter shortcuts don't work while a text box (such as search) has focus. 
 | F11 | Fullscreen |
 | Esc | Leave fullscreen / Theatre Mode |
 | L / K | Forward / back by the frame-step value (default 1) |
-| D / A | Forward / back by the frame-step value |
 | Z | Jump to start (< Paste in the edit modes) |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo an alignment or mask edit (while Edit Alignments or Paint Mask is on) |
 | F / Alt+F | Add / remove marker |
@@ -65,6 +64,6 @@ While either mode is on, these keys replace their usual action and work on the s
 
 ## Free keys
 
-Not used in the main window: B, E, G, H, I, J, O, U, Y, the number keys, and most Ctrl/Shift combinations.
+Not used in the main window: A, B, D, E, G, H, I, J, O, U, Y, the number keys, and most Ctrl/Shift combinations.
 
 <!-- Help > View Shortcuts shows this page (HTML comments like this one are hidden), so update it whenever a shortcut is added or changed. -->

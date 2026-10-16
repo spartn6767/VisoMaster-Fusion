@@ -20,7 +20,7 @@ SHORTCUT_HINTS = {
     "theatreModeButton": "T",
     "frameAdvanceButton": "L",
     "frameRewindButton": "K",
-    "frameSkipStepSpinBox": "K / L and A / D step by this many frames",
+    "frameSkipStepSpinBox": "K / L step by this many frames",
     "addMarkerButton": "F",
     "removeMarkerButton": "Alt+F",
     "nextMarkerButton": "W",
