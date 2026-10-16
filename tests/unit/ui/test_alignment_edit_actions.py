@@ -395,3 +395,27 @@ def test_fill_between_edits_and_jump_keys(main_window):
     assert 1 not in store and 3 not in store
     np.testing.assert_allclose(store.get(2, 1, 1, None)[0]["bbox"][0], 0.9, atol=1e-6)
     assert aea.fill_between_edits(main_window, 0, 0) == 0
+
+
+def test_arrow_keys_step_frames_only_in_edit_modes(main_window, monkeypatch):
+    from app.ui.widgets.actions import video_control_actions as vca
+
+    calls = []
+    monkeypatch.setattr(
+        vca, "advance_video_slider_by_n_frames", lambda mw, n: calls.append(n)
+    )
+    monkeypatch.setattr(
+        vca, "rewind_video_slider_by_n_frames", lambda mw, n: calls.append(-n)
+    )
+    main_window.video_processor = SimpleNamespace(
+        file_type="video", media_path="/v.mp4", processing=False
+    )
+    main_window.control = {"AlignmentsCacheEnableToggle": True}
+    main_window.alignment_edit_enabled = False
+    main_window.mask_paint_enabled = False
+    assert not aea.step_frame_shortcut(main_window, True) and calls == []
+    main_window.mask_paint_enabled = True
+    assert aea.step_frame_shortcut(main_window, True)
+    main_window.mask_paint_enabled, main_window.alignment_edit_enabled = False, True
+    assert aea.step_frame_shortcut(main_window, False)
+    assert calls == [1, -1]

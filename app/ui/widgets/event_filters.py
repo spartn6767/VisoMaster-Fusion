@@ -19,6 +19,14 @@ class GraphicsViewEventFilter(QtCore.QObject):
         self.main_window = main_window
 
     def eventFilter(self, graphics_object: QtWidgets.QGraphicsView, event):
+        if event.type() == QtCore.QEvent.Type.KeyPress and event.key() in (
+            QtCore.Qt.Key_Left,
+            QtCore.Qt.Key_Right,
+        ):
+            # The view would scroll; in an edit mode the arrows step frames instead.
+            return alignment_edit_actions.step_frame_shortcut(
+                self.main_window, event.key() == QtCore.Qt.Key_Right
+            )
         if event.type() == QtCore.QEvent.Type.MouseButtonPress:
             if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 if alignment_edit_actions.is_alignment_edit_active(

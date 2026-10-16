@@ -35,6 +35,10 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 
 Every 2 minutes, unsaved alignments (including masks) are written to an autosave file. If the app closes unexpectedly, load the same video and use **File > Recover Autosaved Alignments...** to get them back. The autosave doesn't count as saving, so you're still asked to save before switching videos. A normal exit deletes it once everything is saved.
 
+## Moving between frames
+
+While this mode is on, **Left** / **Right** step one frame back / forward, the same as the frame buttons (or C / V). They don't move frames while you're typing in a box such as Size.
+
 ## Undo and redo
 
 **Undo** and **Redo** on the bar, or **Ctrl+Z** and **Ctrl+Shift+Z**, step back and forward through your edits.

@@ -13,6 +13,7 @@ Single-letter shortcuts don't work while a text box (such as search) has focus.
 | F11 | Fullscreen |
 | Esc | Leave fullscreen / Theatre Mode |
 | V / C | Forward / back 1 frame |
+| Right / Left | Forward / back 1 frame while Edit Alignments or Paint Mask is on (also when the seek bar has focus) |
 | D / A | Forward / back by the frame-step value |
 | Z | Jump to start |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo an alignment or mask edit (while Edit Alignments or Paint Mask is on) |

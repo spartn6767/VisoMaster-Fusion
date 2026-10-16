@@ -55,6 +55,10 @@ The buttons act on the selected face: the face you last painted or right-clicked
 
 While Paint Mask is on, a circle follows the pointer over the frame. The solid circle is the brush size; the dashed circle inside it shows where the feathered (soft) edge starts.
 
+## Moving between frames
+
+While this mode is on, **Left** / **Right** step one frame back / forward, the same as the frame buttons (or C / V). They don't move frames while you're typing in a box such as Size.
+
 ## Undo and redo
 
 **Undo** and **Redo** on the bar, or **Ctrl+Z** and **Ctrl+Shift+Z**, step back and forward through your edits.

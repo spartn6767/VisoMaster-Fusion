@@ -1181,6 +1181,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.move_slider_to_nearest_marker(self, "next")
             case QtCore.Qt.Key_Q:
                 video_control_actions.move_slider_to_nearest_marker(self, "previous")
+            case QtCore.Qt.Key_Left | QtCore.Qt.Key_Right:
+                from app.ui.widgets.actions import alignment_edit_actions
+
+                alignment_edit_actions.step_frame_shortcut(
+                    self, event.key() == QtCore.Qt.Key_Right
+                )
             case QtCore.Qt.Key_N | QtCore.Qt.Key_P:
                 from app.ui.widgets.actions import alignment_edit_actions
 
