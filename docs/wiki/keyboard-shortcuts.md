@@ -1,6 +1,6 @@
 # Keyboard and mouse shortcuts
 
-Single-letter shortcuts don't work while a text box (such as search) has focus.
+Single-letter shortcuts don't work while a text box (such as search) has focus. Hovering over a button shows its key in the tooltip.
 
 ## Main window
 
@@ -24,6 +24,7 @@ Single-letter shortcuts don't work while a text box (such as search) has focus.
 | Ctrl+0 | Fit to View |
 | Ctrl+1 | 100% zoom |
 
+<!-- Tooltip keys: SHORTCUT_HINTS in app/ui/widgets/actions/shortcut_hints.py. -->
 <!-- Defined in `MainWindow.keyPressEvent` (`app/ui/main_ui.py`), except X, Ctrl+0 and Ctrl+1, which are View menu actions in the same file. -->
 
 ## Edit Alignments and Paint Mask

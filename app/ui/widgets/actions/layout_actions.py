@@ -7,6 +7,7 @@ from PySide6 import QtWidgets, QtCore, QtGui
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 from app.ui.widgets.actions import alignment_autosave
+from app.ui.widgets.actions import shortcut_hints
 from app.ui.widgets.actions import common_actions as common_widget_actions
 from app.ui.widgets.actions import graphics_view_actions
 from app.ui.widgets.actions import list_view_actions
@@ -849,6 +850,7 @@ def set_up_menu_actions(main_window: "MainWindow"):
             main_window.actionView_Help_Presets, main_window.actionHelp_PaintMask
         )
     alignment_autosave.install_autosave(main_window)
+    shortcut_hints.install_shortcut_hints(main_window)
     main_window.actionHelp_EditAlignments.triggered.connect(
         partial(
             list_view_actions.show_wiki_guide,
