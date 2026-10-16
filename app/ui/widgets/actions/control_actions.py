@@ -66,8 +66,8 @@ def handle_alignments_cache_toggle(main_window: "MainWindow", value: bool) -> No
             and user_change
             and not _confirm_discard_alignments(
                 main_window,
-                "Turn Off Reuse Saved Alignments",
-                "Turn off Reuse Saved Alignments?",
+                "Turn Off Reuse Stored Alignments",
+                "Turn off Reuse Stored Alignments?",
                 frame_count,
             )
         ):
