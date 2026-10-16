@@ -28,6 +28,11 @@ class GraphicsViewEventFilter(QtCore.QObject):
                 self.main_window, event.key() == QtCore.Qt.Key_Right
             )
             return True
+        if event.type() == QtCore.QEvent.Type.KeyPress and event.key() in (
+            QtCore.Qt.Key_Up,
+            QtCore.Qt.Key_Down,
+        ):
+            return True  # arrow keys never scroll the preview
         if event.type() == QtCore.QEvent.Type.MouseButtonPress:
             if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 if alignment_edit_actions.is_alignment_edit_active(

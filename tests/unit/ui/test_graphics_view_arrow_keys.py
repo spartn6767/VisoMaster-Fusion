@@ -25,5 +25,7 @@ def test_arrow_keys_never_scroll_the_preview(monkeypatch):
     view = QtWidgets.QGraphicsView()
     assert event_filter.eventFilter(view, _key(QtCore.Qt.Key.Key_Left))
     assert event_filter.eventFilter(view, _key(QtCore.Qt.Key.Key_Right))
-    assert not event_filter.eventFilter(view, _key(QtCore.Qt.Key.Key_Up))
+    assert event_filter.eventFilter(view, _key(QtCore.Qt.Key.Key_Up))
+    assert event_filter.eventFilter(view, _key(QtCore.Qt.Key.Key_Down))
+    assert not event_filter.eventFilter(view, _key(QtCore.Qt.Key.Key_Space))
     assert steps == [False, True]
