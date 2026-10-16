@@ -20,6 +20,7 @@ The project builds on the original VisoMaster work by **@argenspin** and **@Aluc
 - [Download Portable Launcher](https://github.com/VisoMasterFusion/VisoMaster-Fusion/releases/latest/download/Start_Portable.bat)
 - [Quick Start Guide](./docs/quickstart.md)
 - [User Manual](./docs/user_manual.md)
+- [Wiki](./docs/wiki/README.md)
 - [Join Discord](https://discord.gg/5rx4SQuDbp)
 
 ## 🚀 Quick Start
