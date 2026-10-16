@@ -296,6 +296,57 @@ def test_clear_alignments_cache_button(monkeypatch, confirm, expect_cleared):
     assert bool(refreshed) is expect_cleared
 
 
+@pytest.mark.parametrize(
+    "control_on, answer, frames, expect_asked, expect_cleared, expect_rechecked",
+    [
+        (True, True, 1, True, True, False),
+        (True, False, 1, True, False, True),
+        (True, None, 0, False, True, False),
+        # Workspace/job load: control already holds False, so nothing to ask.
+        (False, None, 1, False, True, False),
+    ],
+)
+def test_turning_off_alignments_cache_asks_first(
+    monkeypatch,
+    control_on,
+    answer,
+    frames,
+    expect_asked,
+    expect_cleared,
+    expect_rechecked,
+):
+    from PySide6 import QtCore, QtWidgets
+
+    from app.ui.widgets.actions import control_actions
+
+    asked: list = []
+    buttons = QtWidgets.QMessageBox.StandardButton
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "question",
+        lambda *a, **k: asked.append(a) or (buttons.Yes if answer else buttons.No),
+    )
+    monkeypatch.setattr(QtCore.QTimer, "singleShot", lambda _ms, fn: fn())
+    monkeypatch.setattr(
+        control_actions.common_widget_actions, "refresh_frame", lambda *a, **k: None
+    )
+    rechecked: list = []
+    widget = SimpleNamespace(setChecked=rechecked.append)
+    main_window = SimpleNamespace(
+        alignments=AlignmentStore(),
+        control={"AlignmentsCacheEnableToggle": control_on},
+        parameter_widgets={"AlignmentsCacheEnableToggle": widget},
+    )
+    if frames:
+        main_window.alignments.put(1, [_face()], W, H, "sig")
+
+    control_actions.handle_alignments_cache_toggle(main_window, False)
+
+    assert bool(asked) is expect_asked
+    assert (len(main_window.alignments) == 0) is expect_cleared
+    assert rechecked == ([True] if expect_rechecked else [])
+
+
 def test_nearest_frame_skips_gaps_and_empty_frames():
     store = AlignmentStore()
     face = {"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": [[0.2, 0.2]] * 5}
