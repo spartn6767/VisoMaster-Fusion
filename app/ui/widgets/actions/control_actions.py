@@ -7,7 +7,7 @@ import torch
 from torchvision.transforms import v2
 from PIL import Image
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 import qdarktheme
 
 if TYPE_CHECKING:
@@ -36,9 +36,46 @@ def handle_face_detector_tracking_reset(main_window: "MainWindow", value: bool) 
     common_widget_actions.refresh_frame(main_window)
 
 
+def _confirm_discard_alignments(
+    main_window: "MainWindow", title: str, question: str, frame_count: int
+) -> bool:
+    reply = QtWidgets.QMessageBox.question(
+        main_window,
+        title,
+        f"{question}\n\nThis discards stored alignments for {frame_count} frames, "
+        "including manual alignment edits and painted masks. Faces will be "
+        "re-detected as frames are played, rendered or seeked.",
+        QtWidgets.QMessageBox.StandardButton.Yes
+        | QtWidgets.QMessageBox.StandardButton.No,
+        QtWidgets.QMessageBox.StandardButton.No,
+    )
+    return reply == QtWidgets.QMessageBox.StandardButton.Yes
+
+
 def handle_alignments_cache_toggle(main_window: "MainWindow", value: bool) -> None:
-    """Disabling the alignments cache also discards what it stored."""
+    """Disabling the alignments cache also discards what it stored.
+
+    A user turning it off (control still on) with alignments stored is asked
+    first; answering No switches the toggle back on.
+    """
     if not value:
+        frame_count = len(main_window.alignments)
+        user_change = main_window.control.get("AlignmentsCacheEnableToggle", True)
+        if (
+            frame_count
+            and user_change
+            and not _confirm_discard_alignments(
+                main_window,
+                "Turn Off Reuse Saved Alignments",
+                "Turn off Reuse Saved Alignments?",
+                frame_count,
+            )
+        ):
+            widget = main_window.parameter_widgets.get("AlignmentsCacheEnableToggle")
+            if widget is not None:
+                # After update_control has stored False, so the re-check goes through it.
+                QtCore.QTimer.singleShot(0, lambda: widget.setChecked(True))
+            return
         main_window.alignments.clear()
         print("[INFO] Alignments cache cleared.")
     common_widget_actions.refresh_frame(main_window)
@@ -52,16 +89,9 @@ def clear_alignments_cache(main_window: "MainWindow", *args) -> None:
             main_window, "Clear Alignments", "No stored alignments to clear."
         )
         return
-    reply = QtWidgets.QMessageBox.question(
-        main_window,
-        "Clear Alignments",
-        f"Discard stored alignments for {frame_count} frames?\n\n"
-        "Faces will be re-detected as frames are played, rendered or seeked.",
-        QtWidgets.QMessageBox.StandardButton.Yes
-        | QtWidgets.QMessageBox.StandardButton.No,
-        QtWidgets.QMessageBox.StandardButton.No,
-    )
-    if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+    if not _confirm_discard_alignments(
+        main_window, "Clear Alignments", "Clear all stored alignments?", frame_count
+    ):
         return
     main_window.alignments.clear()
     print(f"[INFO] Cleared alignments for {frame_count} frames.")
