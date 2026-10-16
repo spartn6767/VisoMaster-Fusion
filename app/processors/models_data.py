@@ -351,6 +351,14 @@ tensorrt_shape_infer_models = [
     "AlphaFace",
 ]
 
+# Models that always load without the TensorRT EP (CUDA/CPU only), because
+# TensorRT cannot build an engine for them. The TFLite-converted selfie
+# multiclass segmenter fails the TensorRT probe; it is small enough that CUDA
+# costs little.
+tensorrt_excluded_models = [
+    "SelfieMulticlass",
+]
+
 models_list = [
     {
         "model_name": "Inswapper128",
