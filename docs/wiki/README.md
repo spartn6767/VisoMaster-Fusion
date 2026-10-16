@@ -5,3 +5,4 @@ Reference notes on how the app works today. For new feature write-ups, see [docs
 - [Keyboard and mouse shortcuts](keyboard-shortcuts.md)
 - [Edit Alignments](edit-alignments.md)
 - [Paint Mask](paint-mask.md): includes how a painted mask carries to later frames
+- [Landmarks and alignments](landmarks-and-alignments.md): how landmark detection affects swaps and stored alignments
