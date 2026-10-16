@@ -68,12 +68,6 @@ def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
 
     buttons: dict[str, QtWidgets.QPushButton] = {}
     add_button(
-        "save",
-        "Save Alignments",
-        "Save the alignments (with masks) with the current workspace; asks where "
-        "if the workspace hasn't been saved yet.",
-    ).clicked.connect(lambda: _save_alignments(main_window))
-    add_button(
         "edit",
         "Edit Alignments",
         "Drag landmarks and boxes, draw missed faces (pauses playback).",
@@ -85,6 +79,12 @@ def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
         "Paint add/erase strokes on faces (pauses playback).",
         checkable=True,
     ).toggled.connect(lambda on: mpa.set_mask_paint_mode(main_window, on))
+    add_button(
+        "save",
+        "Save Alignments",
+        "Save the alignments (with masks) with the current workspace; asks where "
+        "if the workspace hasn't been saved yet.",
+    ).clicked.connect(lambda: _save_alignments(main_window))
     separator = QtWidgets.QFrame(bar)
     separator.setFrameShape(QtWidgets.QFrame.Shape.VLine)
     layout.addWidget(separator)
