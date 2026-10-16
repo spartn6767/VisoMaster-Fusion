@@ -19,5 +19,23 @@ Hair Makeup recolors whatever the hair mask covers. That mask is computed fresh 
 - Per-person keyframe lookup can reuse `effective_mask`'s `face_id` hold logic (generalise it to a field name).
 - Limit: long hair swings independently of the face landmarks, so a carried edit can drift on later frames. Moving hair needs more frequent keyframes. The docs should say so.
 
+## Back of the head (no face visible)
+When a person turns away there's no face, so nothing is detected and Hair Makeup doesn't run.
+
+**Workaround that works today** (tested by the user on their machine; it fails when the 5 points are misplaced):
+1. In Edit Alignments, draw a box around the head.
+2. Drag the 5 points to where the eyes, nose and mouth would be if the person faced the camera: eyes level, about a third down the box; nose in the middle; mouth corners lower. The hair search area is placed from these points.
+3. Assign to Target: the target that has Hair Makeup on. A drawn box won't match any target by similarity.
+4. In Paint Mask, erase over the whole face area. Otherwise a face is swapped onto the back of the head; Hair Makeup recolors the frame independently of the painted swap mask.
+5. Alignment edits don't carry forward: set up two frames and use Fill Between Edits for the frames in between.
+
+**Proposed "Back of Head" box type** to automate this:
+- A flag on the manual `AlignmentFace` (e.g. `hair_only`), set from a draw option or a bar button. Persisted.
+- Skip `_refine_manual_alignments` for it: keep `template_kps_for_bbox` points instead of the landmark detector's guess, and don't compute an embedding.
+- Require an assigned target (or prompt for one when drawing it).
+- In `frame_worker_standard`, skip `swap_core` for it and run only `swap_edit_face_core_makeup` with that target's parameters (Hair Makeup only; face/lips/brows makeup make no sense there).
+- Optional: a sampled hair color (from a frame where the face is visible) to filter the segmenter result and fill gaps.
+- Open question: the Hair Segmenter is trained on selfies, so check its quality on backs of heads (CPU test on a few photos) before building.
+
 ## Effort
 Medium to large: new store field and persistence, a head-relative warp, overlay and bar mode switch, hooking into the hair mask pipeline, plus tests. Needs GPU/models to check the look end-to-end.
