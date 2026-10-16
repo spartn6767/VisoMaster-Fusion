@@ -419,3 +419,45 @@ def test_arrow_keys_step_frames_only_in_edit_modes(main_window, monkeypatch):
     main_window.mask_paint_enabled, main_window.alignment_edit_enabled = False, True
     assert aea.step_frame_shortcut(main_window, False)
     assert calls == [1, -1]
+
+
+def test_edit_mode_keys_run_bar_actions(main_window, monkeypatch):
+    from PySide6 import QtCore
+
+    from app.ui.widgets.actions import edit_toolbar_actions as eta
+    from app.ui.widgets.actions import mask_paint_actions as mpa
+
+    calls = []
+    monkeypatch.setattr(
+        eta, "alignment_bar_action", lambda mw, k: calls.append(("align", k))
+    )
+    monkeypatch.setattr(mpa, "toolbar_action", lambda mw, k: calls.append(("mask", k)))
+    main_window.video_processor = SimpleNamespace(
+        file_type="video", media_path="/v.mp4", processing=False
+    )
+    main_window.control = {"AlignmentsCacheEnableToggle": True}
+    main_window.alignment_edit_enabled = False
+    main_window.mask_paint_enabled = False
+    Qt = QtCore.Qt
+
+    def key(k, mods=Qt.KeyboardModifier.NoModifier):
+        return SimpleNamespace(key=lambda: k, modifiers=lambda: mods)
+
+    assert not aea.edit_mode_key(main_window, key(Qt.Key.Key_C))
+    main_window.alignment_edit_enabled = True
+    for k in (Qt.Key.Key_C, Qt.Key.Key_V, Qt.Key.Key_Z, Qt.Key.Key_X, Qt.Key.Key_M):
+        assert aea.edit_mode_key(main_window, key(k))
+    assert not aea.edit_mode_key(
+        main_window, key(Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+    )
+    assert not aea.edit_mode_key(main_window, key(Qt.Key.Key_Q))
+    main_window.alignment_edit_enabled, main_window.mask_paint_enabled = False, True
+    assert aea.edit_mode_key(main_window, key(Qt.Key.Key_M))
+    assert calls == [
+        ("align", "copy"),
+        ("align", "paste"),
+        ("align", "previous"),
+        ("align", "next"),
+        ("align", "delete"),
+        ("mask", "reset_frame"),
+    ]

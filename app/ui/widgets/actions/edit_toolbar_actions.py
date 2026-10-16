@@ -6,7 +6,7 @@ stay in the menu because they need a face under the cursor.
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.ui.widgets.actions import alignment_edit_actions as aea
 from app.ui.widgets.actions import mask_paint_actions as mpa
@@ -81,6 +81,13 @@ def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
 def sync_edit_toolbar(main_window: "MainWindow") -> None:
     """Matches the toggles to the current modes and greys out actions that don't apply."""
     sync_alignment_bar(main_window)
+    face_compare = getattr(main_window, "actionView_FaceCompare", None)
+    if isinstance(face_compare, QtGui.QAction):
+        # X is "Paste >" while an edit mode is on.
+        editing = getattr(main_window, "alignment_edit_enabled", False) or getattr(
+            main_window, "mask_paint_enabled", False
+        )
+        face_compare.setShortcut(QtGui.QKeySequence() if editing else "X")
     buttons = getattr(main_window, _BUTTONS_ATTR, None)
     if not buttons:
         return
@@ -119,13 +126,17 @@ ALIGNMENT_FRAME_ACTIONS = (
     ),
 )
 ALIGNMENT_FACE_ACTIONS = (
-    ("copy", "Copy", "Copy the selected face."),
-    ("paste", "Paste", "Paste the copied face (replaces the selected face)."),
-    ("previous", "< Paste", "Paste the face from the nearest earlier stored frame."),
-    ("next", "Paste >", "Paste the face from the nearest later stored frame."),
+    ("copy", "Copy", "Copy the selected face (C)."),
+    ("paste", "Paste", "Paste the copied face, replacing the selected face (V)."),
+    (
+        "previous",
+        "< Paste",
+        "Paste the face from the nearest earlier stored frame (Z).",
+    ),
+    ("next", "Paste >", "Paste the face from the nearest later stored frame (X)."),
     ("assign", "Assign to Target", "Pin the selected face to a target face."),
     ("add_target", "Add as Target", "Create a target face from the selected face."),
-    ("delete", "Delete Face", "Delete the selected face."),
+    ("delete", "Delete Face", "Delete the selected face (M)."),
     (
         "fill",
         "Fill Between Edits",

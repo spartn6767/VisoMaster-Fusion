@@ -211,6 +211,34 @@ def undo_shortcut(main_window: "MainWindow", redo: bool = False) -> bool:
     return True
 
 
+EDIT_MODE_KEYS = {
+    QtCore.Qt.Key.Key_C: "copy",
+    QtCore.Qt.Key.Key_V: "paste",
+    QtCore.Qt.Key.Key_Z: "previous",
+    QtCore.Qt.Key.Key_X: "next",
+    QtCore.Qt.Key.Key_M: "delete",
+}
+
+
+def edit_mode_key(main_window: "MainWindow", event: QtGui.QKeyEvent) -> bool:
+    """C/V/Z/X/M in an edit mode run the bar's Copy, Paste, < Paste, Paste > and
+    Delete Face (Reset Frame in Paint Mask). True if the key was taken."""
+    from app.ui.widgets.actions import edit_toolbar_actions, mask_paint_actions
+
+    action = EDIT_MODE_KEYS.get(QtCore.Qt.Key(event.key()))
+    if action is None or event.modifiers() != QtCore.Qt.KeyboardModifier.NoModifier:
+        return False
+    if is_alignment_edit_active(main_window):
+        edit_toolbar_actions.alignment_bar_action(main_window, action)
+        return True
+    if mask_paint_actions.is_mask_paint_active(main_window):
+        mask_paint_actions.toolbar_action(
+            main_window, "reset_frame" if action == "delete" else action
+        )
+        return True
+    return False
+
+
 def step_frame_shortcut(main_window: "MainWindow", forward: bool) -> bool:
     """Left/Right in an edit mode: one frame back/forward, like the frame buttons.
     True if an edit mode is on and took the key."""

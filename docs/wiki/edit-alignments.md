@@ -39,6 +39,8 @@ Every 2 minutes, unsaved alignments (including masks) are written to an autosave
 
 While this mode is on, **Left** / **Right** step one frame back / forward, the same as the frame buttons (or C / V). They don't move frames while you're typing in a box such as Size.
 
+**Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Delete Face. While the mode is on, these replace the keys' usual actions (C/V frame steps, Z jump to start, X Face Compare).
+
 ## Undo and redo
 
 **Undo** and **Redo** on the bar, or **Ctrl+Z** and **Ctrl+Shift+Z**, step back and forward through your edits.

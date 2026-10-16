@@ -1134,6 +1134,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setWindowTitle(self.app_display_metadata.window_title)
 
     def keyPressEvent(self, event):
+        if getattr(self, "alignment_edit_enabled", False) or getattr(
+            self, "mask_paint_enabled", False
+        ):
+            from app.ui.widgets.actions import alignment_edit_actions
+
+            if alignment_edit_actions.edit_mode_key(self, event):
+                return
         match event.key():
             case QtCore.Qt.Key_Escape:
                 if getattr(self, "is_theatre_mode", False) and self.control.get(

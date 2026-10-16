@@ -94,11 +94,15 @@ def sync_mask_paint_ui(main_window: "MainWindow") -> None:
 BAR_ACTIONS = (
     ("undo", "Undo", "Undo the last alignment or mask edit (Ctrl+Z)."),
     ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
-    ("copy", "Copy", "Copy the selected face's mask."),
-    ("paste", "Paste", "Paste the copied mask onto the selected face."),
-    ("previous", "< Paste", "Paste the mask from the nearest earlier stored frame."),
-    ("next", "Paste >", "Paste the mask from the nearest later stored frame."),
-    ("reset_frame", "Reset Frame", "Computed mask on this frame only."),
+    ("copy", "Copy", "Copy the selected face's mask (C)."),
+    ("paste", "Paste", "Paste the copied mask onto the selected face (V)."),
+    (
+        "previous",
+        "< Paste",
+        "Paste the mask from the nearest earlier stored frame (Z).",
+    ),
+    ("next", "Paste >", "Paste the mask from the nearest later stored frame (X)."),
+    ("reset_frame", "Reset Frame", "Computed mask on this frame only (M)."),
     ("reset_on", "Reset From Here", "Computed mask from this frame on."),
     ("reset_all", "Reset All", "Remove every painted mask in this video."),
     (

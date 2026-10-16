@@ -12,20 +12,36 @@ Single-letter shortcuts don't work while a text box (such as search) has focus.
 | T | Theatre Mode |
 | F11 | Fullscreen |
 | Esc | Leave fullscreen / Theatre Mode |
-| V / C | Forward / back 1 frame |
+| V / C | Forward / back 1 frame (Copy / Paste in the edit modes, see below) |
 | Right / Left | Forward / back 1 frame while Edit Alignments or Paint Mask is on (also when the seek bar has focus) |
 | D / A | Forward / back by the frame-step value |
-| Z | Jump to start |
+| Z | Jump to start (< Paste in the edit modes) |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo an alignment or mask edit (while Edit Alignments or Paint Mask is on) |
 | F / Alt+F | Add / remove marker |
 | W / Q | Next / previous marker |
 | N / P | Next / previous frame with manual alignment or mask edits (cyan marks on the seek bar) |
 | Shift+N / Shift+P | Next / previous frame found by Find Frames to Check (pink marks) |
-| X | Face Compare |
+| X | Face Compare (Paste > in the edit modes) |
 | Ctrl+0 | Fit to View |
 | Ctrl+1 | 100% zoom |
 
 <!-- Defined in `MainWindow.keyPressEvent` (`app/ui/main_ui.py`), except X, Ctrl+0 and Ctrl+1, which are View menu actions in the same file. -->
+
+## Edit Alignments and Paint Mask
+
+While either mode is on, these keys replace their usual action and work on the selected face, like the bar buttons:
+
+| Key | Edit Alignments | Paint Mask |
+|---|---|---|
+| C | Copy | Copy |
+| V | Paste | Paste |
+| Z | < Paste (from the earlier frame) | < Paste |
+| X | Paste > (from the later frame) | Paste > |
+| M | Delete Face | Reset Frame |
+| Left / Right | Back / forward 1 frame | Back / forward 1 frame |
+| Ctrl+Z / Ctrl+Shift+Z | Undo / redo | Undo / redo |
+
+<!-- Edit-mode keys: EDIT_MODE_KEYS in app/ui/widgets/actions/alignment_edit_actions.py; Face Compare's X shortcut is switched off in edit_toolbar_actions.sync_edit_toolbar. -->
 
 ## Mouse with keys
 
