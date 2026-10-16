@@ -19,6 +19,7 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 
 | Button | What it does |
 |---|---|
+| Undo / Redo | Steps back / forward through your alignment and mask edits (Ctrl+Z / Ctrl+Shift+Z). See below. |
 | Re-detect Frame | Drops this frame's stored faces, including manual edits and painted masks, so the frame is detected again. |
 | Reset All Alignments | Discards every stored alignment in the video (asks first). |
 | Copy | Copies the selected face. |
@@ -27,6 +28,17 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 | Assign to Target | Pins the selected face to a target face, skipping the usual look-alike matching for it on this frame. |
 | Add as Target | Creates a target face from the selected face. |
 | Delete Face | Deletes the selected face from this frame. |
+
+## Undo and redo
+
+**Undo** and **Redo** on the bar, or **Ctrl+Z** and **Ctrl+Shift+Z**, step back and forward through your edits.
+
+- **One step per edit:** each drag, drawn face, paste, deletion, target assignment, Re-detect Frame and Reset All Alignments.
+- **Jumps to the edit:** if the step was on another frame, the viewer goes to that frame first.
+- **Shared with Paint Mask:** alignment and mask edits are one history, so Undo on either bar undoes the last edit of either kind.
+- **A new edit after undoing** drops the steps you could still redo.
+- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Saved Alignments in Settings.
+- **Add as Target:** Undo removes the assignment, but the new target face stays.
 
 ## What an edit affects
 

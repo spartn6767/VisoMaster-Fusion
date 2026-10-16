@@ -322,3 +322,129 @@ def test_rename_media_keeps_entries(tmp_path):
     assert store.matches_media(new)
     store.bind_media(new)
     assert len(store) == 1
+
+
+def _edit_store():
+    store = AlignmentStore()
+    store.bind_media("/v.mp4")
+    for n in range(3):
+        store.put(n, [_face(n * 10)], W, H, "sig")
+    return store
+
+
+def _bbox(store, n):
+    faces = store.get(n, W, H, None)
+    return None if faces is None else faces[0]["bbox"].tolist()
+
+
+def test_undo_redo_one_frame_edit():
+    store = _edit_store()
+    before = _bbox(store, 1)
+    assert not store.can_undo() and store.undo() is None
+    with store.edit([1]):
+        store.update_face(1, 0, W, H, bbox=[0, 0, 50, 50], source=SOURCE_MANUAL)
+    after = _bbox(store, 1)
+    assert store.can_undo() and not store.can_redo()
+
+    assert store.undo() == [1]
+    assert _bbox(store, 1) == before
+    assert store.get(1, W, H, None)[0]["source"] == SOURCE_SEQUENTIAL
+    assert store.redo() == [1]
+    assert _bbox(store, 1) == after
+    assert store.redo() is None
+
+
+def test_undo_restores_removed_and_added_frames():
+    store = _edit_store()
+    with store.edit([2]):
+        store.remove_frame(2)
+    with store.edit([5]):
+        store.add_face(5, _face(), W, H)
+    assert 2 not in store and 5 in store
+    store.undo()
+    assert 5 not in store
+    store.undo()
+    assert 2 in store
+
+
+def test_nested_edits_make_one_step_and_no_op_records_nothing():
+    store = _edit_store()
+    with store.edit([0]):
+        pass
+    assert not store.can_undo()
+    with store.edit([0]):
+        store.update_face(0, 0, W, H, source=SOURCE_MANUAL)
+        with store.edit([1]):
+            store.remove_frame(1)
+    assert store.undo() == [0, 1]
+    assert 1 in store and not store.can_undo()
+
+
+def test_whole_store_edit_undoes_clear_and_keeps_history():
+    store = _edit_store()
+    with store.edit([0]):
+        store.remove_frame(0)
+    with store.edit():
+        store.clear()
+    assert len(store) == 0 and store.can_undo()
+    assert store.undo() == []
+    assert store.frames() == [1, 2]
+    store.undo()
+    assert store.frames() == [0, 1, 2]
+
+
+def test_undo_survives_in_place_mask_clearing():
+    store = _edit_store()
+    mask = np.zeros((2, 256, 256), dtype=np.uint8)
+    mask[0, 100:120, 100:120] = 255
+    with store.edit([0]):
+        store.update_face(0, 0, W, H, mask=mask, source=SOURCE_MANUAL)
+    with store.edit():
+        assert store.clear_masks() == 1
+    store.undo()
+    assert store.effective_mask(0, 0) is not None
+    store.redo()
+    assert store.effective_mask(0, 0) is None
+
+
+def test_new_edit_drops_redo_and_history_is_capped(monkeypatch):
+    import app.processors.video_utils.alignment_store as module
+
+    monkeypatch.setattr(module, "UNDO_LIMIT", 3)
+    store = _edit_store()
+    for x in range(5):
+        with store.edit([0]):
+            store.update_face(0, 0, W, H, bbox=[x, 0, 50, 50])
+    store.undo()
+    assert store.can_redo()
+    with store.edit([0]):
+        store.update_face(0, 0, W, H, bbox=[9, 0, 50, 50])
+    assert not store.can_redo()
+    undone = 0
+    while store.undo() is not None:
+        undone += 1
+    assert undone == 3
+
+
+def test_history_cleared_by_clear_media_switch_and_load(tmp_path):
+    store = _edit_store()
+    with store.edit([0]):
+        store.remove_frame(0)
+    store.clear()
+    assert not store.can_undo()
+
+    store = _edit_store()
+    with store.edit([0]):
+        store.remove_frame(0)
+    store.bind_media("/v.mp4")
+    assert store.can_undo()
+    store.bind_media("/other.mp4")
+    assert not store.can_undo()
+
+    store = _edit_store()
+    path = str(tmp_path / "a.alignments.npz")
+    store.save(path)
+    with store.edit([0]):
+        store.remove_frame(0)
+    store.load(path)
+    assert not store.can_undo() and 0 in store

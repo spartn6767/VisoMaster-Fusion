@@ -20,7 +20,8 @@ import json
 import math
 import os
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -249,6 +250,29 @@ class FrameAlignments:
         return {f.source for f in self.faces}
 
 
+def _copy_frame(frame: Optional[FrameAlignments]) -> Optional[FrameAlignments]:
+    """Copies the face records but shares their arrays, which edits replace
+    rather than write into."""
+    if frame is None:
+        return None
+    return FrameAlignments(frame.signature, [copy.copy(f) for f in frame.faces])
+
+
+UNDO_LIMIT = 100
+
+
+@dataclass
+class _EditStep:
+    # whole: the step covers every frame, so applying it replaces the whole map.
+    whole: bool
+    before: dict[int, Optional[FrameAlignments]]
+    after: dict[int, Optional[FrameAlignments]]
+
+    @property
+    def frames(self) -> list[int]:
+        return [] if self.whole else sorted(self.before)
+
+
 def faces_to_detection_arrays(
     faces: list[dict[str, Any]],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -290,6 +314,12 @@ class AlignmentStore:
         self._revision = 0
         self._saved: dict[str, int] = {}
         self._mask_index: tuple[int, list[int]] = (-1, [])
+        self._undo: list[_EditStep] = []
+        self._redo: list[_EditStep] = []
+        self._edit_depth = 0
+        self._edit_whole = False
+        self._edit_before: dict[int, Optional[FrameAlignments]] = {}
+        self._edit_revision = 0
 
     # --- Introspection ---------------------------------------------------
     def __len__(self) -> int:
@@ -331,10 +361,13 @@ class AlignmentStore:
 
     # --- Mutation --------------------------------------------------------
     def clear(self) -> None:
+        """Drops every frame. Outside an edit() block this also drops the undo history."""
         with self._lock:
             if self._frames:
                 self._revision += 1
             self._frames.clear()
+            if self._edit_depth == 0:
+                self.clear_history()
 
     def bind_media(self, media_path: Optional[str]) -> None:
         """Associates the store with a media file, discarding entries for any other."""
@@ -344,6 +377,8 @@ class AlignmentStore:
             ):
                 return
             self.clear()
+            self.clear_history()
+            self._edit_before = {}
             self.media_path = media_path
             self._revision += 1
 
@@ -446,6 +481,91 @@ class AlignmentStore:
             )
             self._revision += 1
             return True
+
+    # --- Undo / redo -----------------------------------------------------
+    @contextmanager
+    def edit(self, frames: Optional[Iterable[int]] = None) -> Iterator[None]:
+        """Records what the block changes on ``frames`` (None: every frame) as one
+        undo step. Nested blocks join the outermost step."""
+        with self._lock:
+            if self._edit_depth == 0:
+                self._edit_whole = False
+                self._edit_before = {}
+                self._edit_revision = self._revision
+            self._edit_depth += 1
+            if frames is None:
+                if not self._edit_whole:
+                    before = {n: _copy_frame(f) for n, f in self._frames.items()}
+                    before.update(self._edit_before)
+                    self._edit_before = before
+                    self._edit_whole = True
+            elif not self._edit_whole:
+                for n in frames:
+                    if int(n) not in self._edit_before:
+                        self._edit_before[int(n)] = _copy_frame(
+                            self._frames.get(int(n))
+                        )
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._edit_depth -= 1
+                if self._edit_depth == 0:
+                    self._finish_edit()
+
+    def _finish_edit(self) -> None:
+        before, self._edit_before = self._edit_before, {}
+        if self._revision == self._edit_revision or not (before or self._edit_whole):
+            return
+        keys = list(self._frames) if self._edit_whole else list(before)
+        after = {n: _copy_frame(self._frames.get(n)) for n in keys}
+        self._undo.append(_EditStep(self._edit_whole, before, after))
+        del self._undo[:-UNDO_LIMIT]
+        self._redo.clear()
+
+    def _apply(self, frames: dict[int, Optional[FrameAlignments]], whole: bool) -> None:
+        if whole:
+            self._frames = {}
+        for n, frame in frames.items():
+            if frame is None:
+                self._frames.pop(n, None)
+            else:
+                self._frames[n] = _copy_frame(frame)  # type: ignore[assignment]
+        self._revision += 1
+
+    def undo(self) -> Optional[list[int]]:
+        """Reverts the last edit. Returns the frames it changed ([] for all of
+        them), or None if there is nothing to undo."""
+        with self._lock:
+            if not self._undo:
+                return None
+            step = self._undo.pop()
+            self._apply(step.before, step.whole)
+            self._redo.append(step)
+            return step.frames
+
+    def redo(self) -> Optional[list[int]]:
+        """Re-applies the last undone edit; same return value as undo()."""
+        with self._lock:
+            if not self._redo:
+                return None
+            step = self._redo.pop()
+            self._apply(step.after, step.whole)
+            self._undo.append(step)
+            return step.frames
+
+    def can_undo(self) -> bool:
+        with self._lock:
+            return bool(self._undo)
+
+    def can_redo(self) -> bool:
+        with self._lock:
+            return bool(self._redo)
+
+    def clear_history(self) -> None:
+        with self._lock:
+            self._undo.clear()
+            self._redo.clear()
 
     # --- Lookup ----------------------------------------------------------
     def get(
@@ -636,6 +756,7 @@ class AlignmentStore:
             self.media_path = media_path
             self.hair_crop = hair_crop
             self._revision += 1
+            self.clear_history()
 
     def save(self, path: str) -> dict[str, Any]:
         """Writes the store to a compressed .npz sidecar and returns the header
@@ -669,6 +790,7 @@ class AlignmentStore:
             self.media_path = meta.get("media_path")
             self.hair_crop = tuple(float(v) for v in hair_crop) if hair_crop else None
             self._revision += 1
+            self.clear_history()
             self._saved[os.path.abspath(path)] = self._revision
 
     def load_from_header(

@@ -1157,7 +1157,17 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             case QtCore.Qt.Key_A:
                 video_control_actions.rewind_video_slider_by_n_frames(self)
             case QtCore.Qt.Key_Z:
-                self.videoSeekSlider.setValue(0)
+                from app.ui.widgets.actions import alignment_edit_actions
+
+                modifiers = event.modifiers()
+                if not (
+                    modifiers & QtCore.Qt.KeyboardModifier.ControlModifier
+                    and alignment_edit_actions.undo_shortcut(
+                        self,
+                        redo=bool(modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier),
+                    )
+                ):
+                    self.videoSeekSlider.setValue(0)
             case QtCore.Qt.Key_Space:
                 self.buttonMediaPlay.click()
             case QtCore.Qt.Key_R:

@@ -42,12 +42,23 @@ The buttons act on the selected face: the face you last painted or right-clicked
 
 | Button | What it does | Effect on later frames |
 |---|---|---|
+| Undo / Redo | Steps back / forward through your mask and alignment edits (Ctrl+Z / Ctrl+Shift+Z). | Later frames go back to what they carried before / after the step |
 | Copy | Copies the selected face's mask (its own or the carried one). | None |
 | Paste | Pastes the copied mask onto the selected face as a keyframe. | Carries forward like a painted mask |
 | < Paste / Paste > | Copies the mask from the nearest earlier / later frame with stored alignments onto this frame as a keyframe. | Carries forward like a painted mask |
 | Reset Frame | Uses the computed mask on this frame only. | None: later frames keep the mask they had |
 | Reset From Here | Stores an empty keyframe, so this frame uses the computed mask. | Later frames use the computed mask too, up to the next painted keyframe |
 | Reset All | Removes every painted mask in the video (asks first). Also on the edit toolbar as Reset All Masks. | All frames go back to the computed mask |
+
+## Undo and redo
+
+**Undo** and **Redo** on the bar, or **Ctrl+Z** and **Ctrl+Shift+Z**, step back and forward through your edits.
+
+- **One step per edit:** each stroke, paste, Reset Frame, Reset From Here and Reset All.
+- **Later frames follow:** undoing a stroke on a keyframe also puts back what the frames carrying it showed before.
+- **Jumps to the edit:** if the step was on another frame, the viewer goes to that frame first.
+- **Shared with Edit Alignments:** mask and alignment edits are one history, so Undo on either bar undoes the last edit of either kind.
+- **History limits:** the last 100 steps are kept. The history is cleared when you switch videos, load a workspace or job, or click Clear or turn off Reuse Saved Alignments in Settings.
 
 ## Saving
 

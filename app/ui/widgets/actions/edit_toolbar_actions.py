@@ -107,6 +107,8 @@ _ALIGN_BAR_ATTR = "_alignment_bar"
 _ALIGN_BAR_BUTTONS_ATTR = "_alignment_bar_buttons"
 _ALIGN_BAR_POS_ATTR = "alignment_bar_pos"
 ALIGNMENT_FRAME_ACTIONS = (
+    ("undo", "Undo", "Undo the last alignment or mask edit (Ctrl+Z)."),
+    ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
     ("redetect", "Re-detect Frame", "Drop this frame's stored faces."),
     ("reset_all", "Reset All Alignments", "Discard every stored alignment."),
 )
@@ -135,7 +137,9 @@ def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
     frame_number = aea.current_frame_number(main_window)
     face_index = active_alignment_face(main_window)
     result: Any = False
-    if key == "redetect":
+    if key in ("undo", "redo"):
+        result = aea.undo_edit(main_window, redo=key == "redo")
+    elif key == "redetect":
         aea.redetect_frame(main_window, frame_number)
         result = True
     elif key == "reset_all":
@@ -269,6 +273,8 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
     enabled = {
         "redetect": frame_number in store,
         "reset_all": len(store) > 0,
+        "undo": store.can_undo(),
+        "redo": store.can_redo(),
         "paste": getattr(main_window, aea._CLIPBOARD_ATTR, None) is not None,
     }
     if face_index is not None:

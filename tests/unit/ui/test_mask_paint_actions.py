@@ -232,3 +232,28 @@ def test_brush_bar_close_button_leaves_paint_mode(monkeypatch):
     assert close is not None and close.isEnabled()
     close.click()
     assert calls == [(main_window, False)]
+
+
+def test_undo_redo_strokes_and_resets(main_window, monkeypatch):
+    monkeypatch.setattr(aea, "refresh_alignment_overlay", lambda mw: None)
+    monkeypatch.setattr(mpa, "refresh_mask_overlay", lambda mw: None)
+    frame = {"n": 2}
+    main_window.videoSeekSlider = SimpleNamespace(
+        value=lambda: frame["n"], setValue=lambda n: frame.__setitem__("n", n)
+    )
+    store = main_window.alignments
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    assert store.effective_mask(2, 0) is not None
+    assert mpa.toolbar_action(main_window, "undo")
+    assert frame["n"] == 0
+    assert store.effective_mask(0, 0) is None and store.effective_mask(2, 0) is None
+    assert store.get(0, 1, 1, "other") is None
+    assert mpa.toolbar_action(main_window, "redo")
+    assert store.effective_mask(2, 0) is not None
+
+    monkeypatch.setattr(mpa, "_confirm_reset_all", lambda mw: True)
+    assert mpa.reset_all_masks(main_window) == 1
+    assert aea.undo_edit(main_window)
+    assert store.effective_mask(2, 0) is not None
+    assert aea.undo_edit(main_window)
+    assert not aea.undo_edit(main_window)

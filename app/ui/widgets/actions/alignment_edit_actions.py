@@ -8,8 +8,17 @@ embedding) on the next refresh.
 
 import contextlib
 import os
-from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Sequence
+from functools import partial, wraps
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    Optional,
+    Sequence,
+    TypeVar,
+    cast,
+)
 
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -158,6 +167,50 @@ def set_alignment_edit_mode(main_window: "MainWindow", enabled: bool) -> None:
     edit_toolbar_actions.sync_edit_toolbar(main_window)
 
 
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def records_edit(func: F) -> F:
+    """Makes each call one undo step on the frame given as its second argument."""
+
+    @wraps(func)
+    def wrapper(main_window: Any, frame_number: int, *args: Any, **kwargs: Any) -> Any:
+        with main_window.alignments.edit([frame_number]):
+            return func(main_window, frame_number, *args, **kwargs)
+
+    return cast(F, wrapper)
+
+
+def undo_edit(main_window: "MainWindow", redo: bool = False) -> bool:
+    """Undoes (or redoes) the last alignment or mask edit and shows its frame."""
+    from app.ui.widgets.actions import mask_paint_actions
+
+    store = main_window.alignments
+    frames = store.redo() if redo else store.undo()
+    if frames is None:
+        return False
+    if len(frames) == 1 and frames[0] != current_frame_number(main_window):
+        main_window.videoSeekSlider.setValue(frames[0])
+    else:
+        _refresh(main_window)
+    refresh_alignment_overlay(main_window)
+    mask_paint_actions.refresh_mask_overlay(main_window)
+    return True
+
+
+def undo_shortcut(main_window: "MainWindow", redo: bool = False) -> bool:
+    """Ctrl+Z / Ctrl+Shift+Z: True if an edit mode is on and took the key."""
+    from app.ui.widgets.actions import mask_paint_actions
+
+    if not (
+        is_alignment_edit_active(main_window)
+        or mask_paint_actions.is_mask_paint_active(main_window)
+    ):
+        return False
+    undo_edit(main_window, redo)
+    return True
+
+
 def _refresh(main_window: "MainWindow") -> None:
     from app.ui.widgets.actions import common_actions
 
@@ -183,6 +236,7 @@ def _frame_faces(main_window: "MainWindow", frame_number: int) -> list[dict]:
     return main_window.alignments.get(frame_number, 1, 1, None) or []
 
 
+@records_edit
 def add_manual_face(
     main_window: "MainWindow", frame_number: int, bbox: np.ndarray
 ) -> int:
@@ -199,6 +253,7 @@ def add_manual_face(
     return index
 
 
+@records_edit
 def move_landmark(
     main_window: "MainWindow",
     frame_number: int,
@@ -229,6 +284,7 @@ def move_landmark(
     return updated
 
 
+@records_edit
 def move_face(
     main_window: "MainWindow", frame_number: int, face_index: int, dx: float, dy: float
 ) -> bool:
@@ -254,6 +310,7 @@ def move_face(
     return updated
 
 
+@records_edit
 def resize_face(
     main_window: "MainWindow",
     frame_number: int,
@@ -286,6 +343,7 @@ def resize_face(
     return updated
 
 
+@records_edit
 def delete_face(main_window: "MainWindow", frame_number: int, face_index: int) -> None:
     if main_window.alignments.remove_face(frame_number, face_index):
         _refresh(main_window)
@@ -324,6 +382,7 @@ def paste_from_frame(
     return _paste(main_window, frame_number, faces[source_index], replace_index)
 
 
+@records_edit
 def _paste(
     main_window: "MainWindow",
     frame_number: int,
@@ -347,11 +406,13 @@ def _paste(
     return True
 
 
+@records_edit
 def redetect_frame(main_window: "MainWindow", frame_number: int) -> None:
     main_window.alignments.remove_frame(frame_number)
     _refresh(main_window)
 
 
+@records_edit
 def assign_target(
     main_window: "MainWindow",
     frame_number: int,
@@ -401,7 +462,8 @@ def reset_all_alignments(main_window: "MainWindow") -> int:
     frame_count = len(main_window.alignments)
     if frame_count == 0 or not _confirm_reset_all_alignments(main_window, frame_count):
         return 0
-    main_window.alignments.clear()
+    with main_window.alignments.edit():
+        main_window.alignments.clear()
     refresh_alignment_overlay(main_window)
     _refresh(main_window)
     return frame_count
@@ -603,7 +665,10 @@ def clear_alignment_overlay(main_window: "MainWindow") -> None:
 
 def refresh_alignment_overlay(main_window: "MainWindow") -> None:
     """Redraws the editable boxes and landmarks for the current frame."""
+    from app.ui.widgets.actions import edit_toolbar_actions
+
     clear_alignment_overlay(main_window)
+    edit_toolbar_actions.sync_alignment_bar(main_window)
     if not is_alignment_edit_active(main_window):
         return
     rect = _pixmap_rect(main_window)

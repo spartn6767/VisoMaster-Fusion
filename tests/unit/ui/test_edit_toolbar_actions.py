@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import pytest
 
 from PySide6 import QtWidgets
 
@@ -133,3 +134,51 @@ def test_alignment_bar_close_button_leaves_edit_mode(monkeypatch):
     ]
     close.click()
     assert calls == [(main_window, False)]
+
+
+def test_alignment_bar_undo_redo(monkeypatch):
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    monkeypatch.setattr(aea, "_refresh", lambda mw: None)
+    monkeypatch.setattr(aea, "refresh_alignment_overlay", eta.sync_alignment_bar)
+    monkeypatch.setattr(mpa, "refresh_mask_overlay", lambda mw: None)
+    view = QtWidgets.QWidget()
+    view.resize(1400, 700)
+    slider = QtWidgets.QSlider()
+    slider.setRange(0, 10)
+    slider.setValue(1)
+    store = AlignmentStore()
+    store.bind_media("/v.mp4")
+    store.put(1, [{"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": [[0.2, 0.2]] * 5}], 1, 1, "s")
+    main_window = SimpleNamespace(
+        graphicsViewFrame=view,
+        videoSeekSlider=slider,
+        alignments=store,
+        control={"AlignmentsCacheEnableToggle": True},
+        video_processor=SimpleNamespace(
+            file_type="video", media_path="/v.mp4", processing=False
+        ),
+        alignment_edit_enabled=True,
+        mask_paint_enabled=False,
+        target_faces={},
+    )
+    eta.sync_alignment_bar(main_window)
+    buttons = main_window._alignment_bar_buttons
+    assert not buttons["undo"].isEnabled() and not buttons["redo"].isEnabled()
+
+    assert aea.move_face(main_window, 1, 0, 0.1, 0.0)
+    eta.sync_alignment_bar(main_window)  # the frame refresh does this in the app
+    assert buttons["undo"].isEnabled()
+    slider.setValue(4)
+    buttons["undo"].click()
+    assert slider.value() == 1
+    assert store.get(1, 1, 1, None)[0]["bbox"][0] == pytest.approx(0.1)
+    assert buttons["redo"].isEnabled() and not buttons["undo"].isEnabled()
+    buttons["redo"].click()
+    assert store.get(1, 1, 1, None)[0]["bbox"][0] == pytest.approx(0.2)
+
+    assert aea.undo_shortcut(main_window)
+    assert store.get(1, 1, 1, None)[0]["bbox"][0] == pytest.approx(0.1)
+    assert aea.undo_shortcut(main_window)  # nothing left, but the key is taken
+    main_window.alignment_edit_enabled = False
+    assert not aea.undo_shortcut(main_window, redo=True)
+    assert store.can_redo()

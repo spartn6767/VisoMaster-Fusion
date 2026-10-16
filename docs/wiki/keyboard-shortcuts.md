@@ -15,6 +15,7 @@ Single-letter shortcuts don't work while a text box (such as search) has focus.
 | V / C | Forward / back 1 frame |
 | D / A | Forward / back by the frame-step value |
 | Z | Jump to start |
+| Ctrl+Z / Ctrl+Shift+Z | Undo / redo an alignment or mask edit (while Edit Alignments or Paint Mask is on) |
 | F / Alt+F | Add / remove marker |
 | W / Q | Next / previous marker |
 | X | Face Compare |

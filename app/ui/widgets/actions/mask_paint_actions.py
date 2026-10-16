@@ -81,6 +81,8 @@ def sync_mask_paint_ui(main_window: "MainWindow") -> None:
 
 
 BAR_ACTIONS = (
+    ("undo", "Undo", "Undo the last alignment or mask edit (Ctrl+Z)."),
+    ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
     ("copy", "Copy", "Copy the selected face's mask."),
     ("paste", "Paste", "Paste the copied mask onto the selected face."),
     ("previous", "< Paste", "Paste the mask from the nearest earlier stored frame."),
@@ -123,6 +125,8 @@ def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
     """Runs a brush-bar action on the selected face of the shown frame."""
     if key == "reset_all":
         return reset_all_masks(main_window)
+    if key in ("undo", "redo"):
+        return aea.undo_edit(main_window, redo=key == "redo")
     frame_number = aea.current_frame_number(main_window)
     face_index = active_face(main_window)
     result: Any = False
@@ -155,7 +159,11 @@ def _sync_bar_buttons(main_window: "MainWindow") -> None:
     store = main_window.alignments
     frame_number = aea.current_frame_number(main_window)
     face_index = active_face(main_window)
-    enabled = {"reset_all": store.mask_frame_count() > 0}
+    enabled = {
+        "reset_all": store.mask_frame_count() > 0,
+        "undo": store.can_undo(),
+        "redo": store.can_redo(),
+    }
     if face_index is not None:
         has_mask = store.effective_mask(frame_number, face_index) is not None
         enabled.update(
@@ -298,6 +306,7 @@ def _face_kps_px(face: dict, frame_w: float, frame_h: float) -> np.ndarray:
     return np.asarray(face["kps_5"], dtype=np.float64)[:5] * (frame_w, frame_h)
 
 
+@aea.records_edit
 def set_mask(
     main_window: "MainWindow",
     frame_number: int,
@@ -367,7 +376,8 @@ def reset_mask_frame(
 def reset_all_masks(main_window: "MainWindow") -> int:
     if not _confirm_reset_all(main_window):
         return 0
-    cleared = main_window.alignments.clear_masks()
+    with main_window.alignments.edit():
+        cleared = main_window.alignments.clear_masks()
     if cleared:
         aea._refresh(main_window)
         refresh_mask_overlay(main_window)
