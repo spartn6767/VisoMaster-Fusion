@@ -4,6 +4,7 @@ Mirrors the viewer's right-click menu for the frame-wide actions; per-face actio
 stay in the menu because they need a face under the cursor.
 """
 
+import os
 from typing import TYPE_CHECKING, Any, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -17,10 +18,31 @@ if TYPE_CHECKING:
 _BUTTONS_ATTR = "editToolbarButtons"
 
 
-def _save_alignments(main_window: "MainWindow") -> None:
-    from app.ui.widgets.actions import save_load_actions
+def _saved_workspace(main_window: "MainWindow") -> str:
+    path = str(getattr(main_window, "current_workspace_path", "") or "")
+    return path if path and os.path.isfile(path) else ""
 
-    save_load_actions.save_current_workspace(main_window)
+
+def _save_alignments(main_window: "MainWindow") -> bool:
+    """Saves next to the current workspace without asking; with no saved workspace,
+    asks where to save it first. Confirms with a toast."""
+    from app.ui.widgets.actions import common_actions, save_load_actions
+
+    workspace = _saved_workspace(main_window)
+    if workspace:
+        save_load_actions.save_current_workspace(main_window, workspace)
+    else:
+        save_load_actions.save_current_workspace(main_window)
+        workspace = _saved_workspace(main_window)
+        if not workspace:
+            return False  # cancelled
+    common_actions.create_and_show_toast_message(
+        main_window,
+        "Alignments Saved",
+        f"Saved alignments for {len(main_window.alignments)} frames next to "
+        f"{os.path.basename(workspace)}.",
+    )
+    return True
 
 
 def install_edit_toolbar(main_window: "MainWindow") -> QtWidgets.QWidget:
