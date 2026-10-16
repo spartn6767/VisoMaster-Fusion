@@ -445,6 +445,9 @@ def _parser_frame_mask(
     return placed[0], placed[1], frame_px
 
 
+_segmenter_diag_done = False
+
+
 @torch.no_grad()
 def _segmenter_frame_mask(
     img: torch.Tensor,
@@ -481,6 +484,16 @@ def _segmenter_frame_mask(
         mask.unsqueeze(0), size=(box_h, box_w), mode="bilinear", align_corners=False
     )[0]
     roi_mask = full[:, y0 - top : y1 - top, x0 - left : x1 - left]
+    global _segmenter_diag_done
+    if not _segmenter_diag_done:
+        _segmenter_diag_done = True
+        print(
+            f"[INFO] Hair Segmenter mask: frame={tuple(img.shape)} {img.dtype} "
+            f"box={(left, top, right, bottom)} crop={tuple(crop.shape)} "
+            f"{crop.dtype} hair_prob_max={float(prob.max()):.2f} "
+            f"threshold={threshold:.2f} mask_max={float(roi_mask.max()):.2f} "
+            f"hair_area={float((roi_mask > 0).float().mean()):.1%}"
+        )
     return roi_mask, (y0, y1, x0, x1), frame_px
 
 
