@@ -136,6 +136,8 @@ def create_parameter_dict_for_face_id(main_window: "MainWindow", face_id: str):
                 parameters, main_window.default_parameters
             )
         main_window.parameters[face_id] = parameters.copy()
+        # Hair color belongs to one person, so new faces don't inherit it.
+        main_window.parameters[face_id]["HairMakeupEnableToggle"] = False
     # print("Created parameter_dict_for_face_id", face_id)
 
 

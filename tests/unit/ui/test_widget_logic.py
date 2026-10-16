@@ -408,3 +408,26 @@ class TestDFMModelManager:
         model_file.unlink()
         mgr.refresh_models()
         assert "temp.dfm" not in mgr.get_models_data()
+
+
+def test_new_face_copies_settings_but_not_hair_makeup():
+    from app.ui.widgets.actions.common_actions import create_parameter_dict_for_face_id
+
+    mw = MagicMock()
+    mw.default_parameters = {
+        "HairMakeupEnableToggle": False,
+        "SwapModelSelection": "Inswapper128",
+    }
+    mw.selected_target_face_id = "1"
+    mw.parameters = {
+        "1": {
+            "HairMakeupEnableToggle": True,
+            "HairMakeupRedSlider": 200,
+            "SwapModelSelection": "SimSwap512",
+        }
+    }
+    create_parameter_dict_for_face_id(mw, "2")
+    assert mw.parameters["2"]["HairMakeupEnableToggle"] is False
+    assert mw.parameters["2"]["HairMakeupRedSlider"] == 200
+    assert mw.parameters["2"]["SwapModelSelection"] == "SimSwap512"
+    assert mw.parameters["1"]["HairMakeupEnableToggle"] is True
