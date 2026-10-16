@@ -283,18 +283,21 @@ def hair_area_key(parameters: dict) -> CropKey:
 
 @torch.no_grad()
 def segmenter_hair_probability(
-    logits: torch.Tensor, head: Optional[Head] = None
+    logits: torch.Tensor,
+    head: Optional[Head] = None,
+    other_heads: Sequence[Head] = (),
 ) -> torch.Tensor:
     """[1,6,H,W] selfie multiclass logits -> [1,H,W] hair probability.
 
     With ``head`` (an ellipse around this face's head, in logit pixels), only
     hair regions that reach the head are kept, so other people's hair inside
-    the search area is dropped.
+    the search area is dropped. Where a region also reaches one of
+    ``other_heads`` (other faces in the frame), it is split by nearest head.
     """
     hair = torch.softmax(logits.float(), dim=1)[:, SEGMENTER_HAIR_LABEL]
     if head is None:
         return hair
-    keep = _hair_on_head(hair[0].cpu().numpy(), head)
+    keep = _hair_on_head(hair[0].cpu().numpy(), head, other_heads)
     return hair * torch.from_numpy(keep).to(hair.device, hair.dtype).unsqueeze(0)
 
 
@@ -307,18 +310,50 @@ HEAD_RADIUS_X = 1.8
 HEAD_RADIUS_Y = 2.2
 # Dilation (logit pixels) of the kept regions, so soft hair edges are not cut.
 HAIR_EDGE_PX = 3
+# When splitting shared hair by nearest head, vertical distance below a head
+# counts this much, so hair hanging down stays with the head above it.
+BELOW_HEAD_WEIGHT = 0.25
 
 
-def _hair_on_head(hair: np.ndarray, head: Head) -> np.ndarray:
-    """float32 0/1 map of the connected hair regions that overlap ``head``."""
+def _head_distance(
+    xs: np.ndarray, ys: np.ndarray, head: Head, below: float
+) -> np.ndarray:
+    """Squared ellipse distance to ``head``; 1.0 is on the ellipse."""
+    cx, cy, rx, ry = head
+    dy = (ys - cy) / max(ry, 1.0)
+    dy = np.where(dy > 0, dy * below, dy)
+    return ((xs - cx) / max(rx, 1.0)) ** 2 + dy**2
+
+
+def _hair_on_head(
+    hair: np.ndarray, head: Head, other_heads: Sequence[Head] = ()
+) -> np.ndarray:
+    """float32 0/1 map of the connected hair regions that overlap ``head``.
+
+    A region that also overlaps another head is split: each pixel goes to the
+    nearest head, with hair below a head counted as that head's.
+    """
     connected = (hair > HAIR_CONNECT_THRESHOLD).astype(np.uint8)
     _, labels = cv2.connectedComponents(connected, connectivity=8)
     h, w = hair.shape
-    cx, cy, rx, ry = head
-    ys, xs = np.mgrid[0:h, 0:w]
-    inside = ((xs - cx) / max(rx, 1.0)) ** 2 + ((ys - cy) / max(ry, 1.0)) ** 2 <= 1.0
-    on_head = np.unique(labels[inside & (labels > 0)])
-    region = np.isin(labels, on_head).astype(np.uint8)
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    on_head = np.unique(
+        labels[(_head_distance(xs, ys, head, 1.0) <= 1.0) & (labels > 0)]
+    )
+    keep = np.isin(labels, on_head)
+    if other_heads:
+        on_others = np.min(
+            [_head_distance(xs, ys, o, 1.0) for o in other_heads], axis=0
+        )
+        shared = np.unique(labels[keep & (on_others <= 1.0)])
+        if len(shared):
+            own = _head_distance(xs, ys, head, BELOW_HEAD_WEIGHT)
+            other = np.min(
+                [_head_distance(xs, ys, o, BELOW_HEAD_WEIGHT) for o in other_heads],
+                axis=0,
+            )
+            keep &= ~(np.isin(labels, shared) & (other < own))
+    region = keep.astype(np.uint8)
     size = 2 * HAIR_EDGE_PX + 1
     region = cv2.dilate(region, np.ones((size, size), np.uint8))
     return region.astype(np.float32)
@@ -354,9 +389,13 @@ def _segmenter_prob_fn(
     box: Sequence[int],
     parameters: dict,
     segmenter_logits: Callable[[torch.Tensor], torch.Tensor],
+    other_kps: Sequence[np.ndarray] = (),
 ) -> ProbFn:
-    head = segmenter_head(kps, box) if isolate_person(parameters) else None
-    return lambda crop: segmenter_hair_probability(segmenter_logits(crop), head)
+    if not isolate_person(parameters):
+        return lambda crop: segmenter_hair_probability(segmenter_logits(crop))
+    head = segmenter_head(kps, box)
+    others = [segmenter_head(k, box) for k in other_kps]
+    return lambda crop: segmenter_hair_probability(segmenter_logits(crop), head, others)
 
 
 def segmenter_box(
@@ -533,6 +572,7 @@ def _segmenter_frame_mask(
     parameters: dict,
     segmenter_logits: Callable[[torch.Tensor], torch.Tensor],
     hair_cache: Optional[HairMaskCache],
+    other_kps: Sequence[np.ndarray] = (),
 ) -> Optional[FrameMask]:
     key = hair_area_key(parameters)
     left, top, right, bottom = segmenter_box(kps, *segmenter_area(parameters))
@@ -545,7 +585,7 @@ def _segmenter_frame_mask(
     crop = crop_box(img, box)
     prob = hair_prob_for_crop(
         crop,
-        _segmenter_prob_fn(kps, box, parameters, segmenter_logits),
+        _segmenter_prob_fn(kps, box, parameters, segmenter_logits, other_kps),
         hair_cache,
         key,
     )
@@ -574,8 +614,12 @@ def recolor_hair_in_frame(
     parser_logits: Callable[[torch.Tensor], torch.Tensor],
     hair_cache: Optional[HairMaskCache] = None,
     segmenter_logits: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    other_kps: Sequence[np.ndarray] = (),
 ) -> torch.Tensor:
     """Recolor one face's hair directly in the [3,H,W] frame.
+
+    ``other_kps`` are the landmarks of the frame's other faces; the segmenter
+    uses them to keep this face's hair apart from theirs.
 
     The hair mask comes either from the face parser on a 512px crop sized by the
     Hair Area sliders, or from the hair segmenter on a tall area from above the
@@ -585,7 +629,7 @@ def recolor_hair_in_frame(
     """
     if uses_segmenter(parameters) and segmenter_logits is not None:
         placed = _segmenter_frame_mask(
-            img, kps, parameters, segmenter_logits, hair_cache
+            img, kps, parameters, segmenter_logits, hair_cache, other_kps
         )
     else:
         placed = _parser_frame_mask(img, kps, parameters, parser_logits, hair_cache)

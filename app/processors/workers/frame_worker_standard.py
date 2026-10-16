@@ -70,7 +70,7 @@ class StandardProcessor:
         with self.worker.lock:
             target_faces_snapshot = dict(self.worker.main_window.target_faces)
 
-        det_faces_data_for_display = []
+        det_faces_data_for_display: list[dict] = []
 
         img = processed_tensor_rgb_uint8
         # FW-QUAL-11: rename img_x/img_y to img_w/img_h for clarity
@@ -241,6 +241,14 @@ class StandardProcessor:
                 fface.get("alignment_index"),
                 None if target_id is None else str(target_id),
             )
+
+        def other_faces_kps(fface: dict) -> list:
+            """5-point landmarks of every other face in the frame."""
+            return [
+                f["kps_5"]
+                for f in det_faces_data_for_display
+                if f is not fface and f.get("kps_5") is not None
+            ]
 
         def hair_cache_for(fface: dict, target: Any, params: Any) -> Any:
             index = fface.get("alignment_index")
@@ -740,6 +748,7 @@ class StandardProcessor:
                                     hair_cache=hair_cache_for(
                                         best_fface, target_face, params
                                     ),
+                                    other_kps=other_faces_kps(best_fface),
                                 )
                         except Exception as e:
                             print(
@@ -888,6 +897,7 @@ class StandardProcessor:
                                     hair_cache=hair_cache_for(
                                         fface, best_target, params
                                     ),
+                                    other_kps=other_faces_kps(fface),
                                 )
                         except Exception as e:
                             print(

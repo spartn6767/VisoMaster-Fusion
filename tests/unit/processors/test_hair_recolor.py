@@ -621,3 +621,40 @@ def test_isolate_person_toggle_changes_cache_key():
     off = {**SEGMENTER, "HairMakeupIsolatePersonToggle": False}
     assert hair_area_key(off) == (0.0, 7.0, 8.0, 0.0)
     assert hair_area_key(off) != hair_area_key(SEGMENTER)
+
+
+def _touching_hair_logits():
+    """Two people whose hair joins into one region, left one with long hair."""
+    logits = torch.zeros(1, 6, 256, 256)
+    logits[:, 0] = 10.0
+    logits[:, 0, 60:120, 20:230] = 0.0
+    logits[:, 1, 60:120, 20:230] = 10.0
+    logits[:, 0, 120:250, 20:35] = 0.0
+    logits[:, 1, 120:250, 20:35] = 10.0
+    return logits
+
+
+def test_segmenter_splits_shared_hair_by_nearest_head():
+    from app.processors.hair_recolor import segmenter_hair_probability
+
+    left_head, right_head = (55.0, 110.0, 30.0, 40.0), (195.0, 110.0, 30.0, 40.0)
+    logits = _touching_hair_logits()
+    alone = segmenter_hair_probability(logits, left_head)[0]
+    assert alone[90, 200] > 0.9  # without the other face, the joined hair is kept
+    split = segmenter_hair_probability(logits, left_head, [right_head])[0]
+    assert split[90, 50] > 0.9 and split[200, 27] > 0.9
+    assert float(split[:, 140:].max()) == 0.0
+    right = segmenter_hair_probability(logits, right_head, [left_head])[0]
+    assert right[90, 200] > 0.9 and float(right[:, :110].max()) == 0.0
+
+
+def test_other_faces_only_split_hair_they_touch():
+    from app.processors.hair_recolor import segmenter_hair_probability
+
+    logits = _two_people_logits()
+    head = (55.0, 110.0, 30.0, 40.0)
+    far = (200.0, 30.0, 10.0, 10.0)  # touches no hair of this person
+    assert torch.equal(
+        segmenter_hair_probability(logits, head, [far]),
+        segmenter_hair_probability(logits, head),
+    )

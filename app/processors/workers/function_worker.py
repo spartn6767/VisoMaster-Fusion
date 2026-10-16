@@ -469,10 +469,16 @@ class FunctionWorker:
         parameters: dict,
         control: dict,
         hair_cache: Any = None,
+        other_kps: Any = None,
     ) -> torch.Tensor:
         """Thread-safe facade for applying face makeup edits."""
         return self.frame_edits.swap_edit_face_core_makeup(
-            img, kps, parameters, control, hair_cache=hair_cache
+            img,
+            kps,
+            parameters,
+            control,
+            hair_cache=hair_cache,
+            other_kps=other_kps,
         )
 
     def apply_face_makeup(self, img: Any, parameters: dict) -> Any:
