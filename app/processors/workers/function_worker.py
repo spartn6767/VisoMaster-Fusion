@@ -21,12 +21,12 @@ from app.processors.perform_recast import PerformRecast
 from app.processors.face_denoiser import FaceDenoiser
 from app.processors.frame_edits import FrameEdits
 from app.processors.hair_recolor import (
-    hair_area,
-    hair_probability,
+    hair_area_key,
+    hair_crop_and_prob,
     sample_hair_color,
 )
 from app.processors.models_data import arcface_mapping_model_dict
-from app.processors.utils import faceutil, platform_support
+from app.processors.utils import platform_support
 
 if TYPE_CHECKING:
     from app.processors.models_processor import ModelsProcessor
@@ -586,15 +586,18 @@ class FunctionWorker:
     def get_faceparser_logits(self, img_uint8_3x512x512: torch.Tensor) -> torch.Tensor:
         return self.face_masks._faceparser_logits(img_uint8_3x512x512)
 
+    def get_hair_segmenter_logits(
+        self, img_uint8_3x256x256: torch.Tensor
+    ) -> torch.Tensor:
+        return self.face_masks._hair_segmenter_logits(img_uint8_3x256x256)
+
     def sample_input_hair_color(
         self, image_path: str, parameters: dict, control: dict
     ) -> Optional[Tuple[float, float, float]]:
-        """Hair color of an input face image, sampled once per image and crop."""
-        scale, vy_ratio = hair_area(parameters)
+        """Hair color of an input face image, sampled once per image and hair area."""
         key = (
             image_path,
-            scale,
-            vy_ratio,
+            *hair_area_key(parameters),
             str(control.get("DetectorModelSelection", "RetinaFace")),
         )
         with self._input_hair_lock:
@@ -602,7 +605,7 @@ class FunctionWorker:
                 return self._input_hair_colors[key]
         color = None
         try:
-            color = self._compute_input_hair_color(image_path, scale, vy_ratio, control)
+            color = self._compute_input_hair_color(image_path, parameters, control)
         except Exception as e:
             print(f"[WARN] Sampling input hair color failed for {image_path}: {e}")
         else:
@@ -619,7 +622,7 @@ class FunctionWorker:
         return color
 
     def _compute_input_hair_color(
-        self, image_path: str, crop_scale: float, vy_ratio: float, control: dict
+        self, image_path: str, parameters: dict, control: dict
     ) -> Optional[Tuple[float, float, float]]:
         frame = misc_helpers.read_image_file(image_path)
         if frame is None:
@@ -638,11 +641,14 @@ class FunctionWorker:
         )
         if kpss_5 is None or len(kpss_5) == 0:
             return None
-        face_512, _, _ = faceutil.warp_face_by_face_landmark_x(
-            img, kpss_5[0], dsize=512, scale=crop_scale, vy_ratio=vy_ratio
+        crop, prob = hair_crop_and_prob(
+            img,
+            kpss_5[0],
+            parameters,
+            self.get_faceparser_logits,
+            self.get_hair_segmenter_logits,
         )
-        prob = hair_probability(self.get_faceparser_logits(face_512))
-        return sample_hair_color(face_512, prob)
+        return sample_hair_color(crop, prob)
 
     def run_CLIPs(
         self, img: np.ndarray, CLIPText: str, CLIPAmount: float

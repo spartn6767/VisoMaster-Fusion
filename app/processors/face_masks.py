@@ -127,6 +127,64 @@ class FaceMasks:
 
         return out
 
+    def _hair_segmenter_logits(self, img_uint8_3x256x256: torch.Tensor) -> torch.Tensor:
+        """
+        Runs the MediaPipe selfie multiclass segmenter on a 256x256 input.
+        Returns: (1, 6, 256, 256) float logits for background, hair, body skin,
+        face skin, clothes and others (all zeros if the model is missing).
+        """
+        model_name = "SelfieMulticlass"
+
+        # The model takes NHWC RGB in [0..1].
+        x = img_uint8_3x256x256.float().div(255.0)
+        x = x.permute(1, 2, 0).unsqueeze(0).contiguous()
+
+        ort_session = self.models_processor.models.get(model_name)
+        if not ort_session:
+            ort_session = self.models_processor.load_model(model_name)
+
+        if not ort_session:
+            # Uniform logits: no class wins, so no hair is found.
+            return torch.zeros(
+                (1, 6, 256, 256),
+                dtype=torch.float32,
+                device=img_uint8_3x256x256.device,
+            )
+
+        out = torch.empty((1, 256, 256, 6), device=self.models_processor.device)
+        io = ort_session.io_binding()
+        io.bind_input(
+            "input_29",
+            self.models_processor.device_type,
+            self.models_processor.binding_device_id,
+            np.float32,
+            (1, 256, 256, 3),
+            x.data_ptr(),
+        )
+        io.bind_output(
+            "Identity",
+            self.models_processor.device_type,
+            self.models_processor.binding_device_id,
+            np.float32,
+            (1, 256, 256, 6),
+            out.data_ptr(),
+        )
+
+        is_lazy_build = self.models_processor.check_and_clear_pending_build(model_name)
+        if is_lazy_build:
+            self.models_processor.show_build_dialog.emit(
+                "Finalizing TensorRT Build",
+                f"Performing first-run inference for:\n{model_name}\n\nThis may take several minutes.",
+            )
+
+        try:
+            self.function_worker.run_ort_with_iobinding(ort_session, io)
+        finally:
+            if is_lazy_build:
+                self.models_processor.hide_build_dialog.emit()
+
+        return out.permute(0, 3, 1, 2)
+
     # --- Mouth Processing Logic ---
 
     @torch.no_grad()

@@ -1,6 +1,6 @@
 # Idea: natural hair recolor (luminance-preserving, tone remap, soft mask)
 
-**Status:** in-crop version built: Lab recolor with Lightness and a soft mask (replaces the old Overlay blend), "Use Input's Hair Color", plus the optional "Stabilize Hair Mask (cache)" toggle, which stores hair probabilities with the alignments and smooths them over frames. Full-frame hair is still an idea.
+**Status:** in-crop version built: Lab recolor with Lightness and a soft mask (replaces the old Overlay blend), "Use Input's Hair Color", plus the optional "Stabilize Hair Mask (cache)" toggle, which stores hair probabilities with the alignments and smooths them over frames. Long hair past the face crop is handled on the full frame, either by the face parser on a wider Hair Area crop or by the "Hair Segmenter" mask model (MediaPipe selfie multiclass, Apache 2.0) on a tall area from above the head down past the shoulders.
 
 ## Problem
 Hair Makeup (`face_parser_makeup_direct_rgb_masked` in `app/processors/face_editors.py`) applies a fixed RGB color with a per-channel Photoshop **Overlay** blend over a hard face-parser hair mask (label 17, argmax, 5px blur), inside the 512px face crop. It looks unnatural because:

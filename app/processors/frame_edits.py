@@ -1484,6 +1484,7 @@ class FrameEdits:
                 parameters,
                 self.function_worker.get_faceparser_logits,
                 hair_cache=kwargs.get("hair_cache"),
+                segmenter_logits=self.function_worker.get_hair_segmenter_logits,
             )
         if not other_on:
             return img

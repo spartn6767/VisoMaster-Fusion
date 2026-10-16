@@ -203,7 +203,7 @@ def test_hair_probs_persist_in_sidecar(tmp_path):
 
 
 def test_cache_hit_skips_face_parser():
-    from app.processors.hair_recolor import hair_prob_for_crop
+    from app.processors.hair_recolor import hair_prob_for_crop, hair_probability
 
     calls: list[str] = []
 
@@ -219,12 +219,15 @@ def test_cache_hit_skips_face_parser():
     )
     img = torch.full((3, 512, 512), 40, dtype=torch.uint8)
 
-    hair_prob_for_crop(img, parser_logits, cache, CROP)
+    def prob_fn(crop):
+        return hair_probability(parser_logits(crop))
+
+    hair_prob_for_crop(img, prob_fn, cache, CROP)
     assert calls == ["logits"] and saved == [CROP]
 
     calls.clear()
     store_map[CROP] = np.ones((HAIR_PROB_SIZE, HAIR_PROB_SIZE), dtype=np.float32)
-    prob = hair_prob_for_crop(img, parser_logits, cache, CROP)
+    prob = hair_prob_for_crop(img, prob_fn, cache, CROP)
     assert calls == []
     assert prob.shape == (1, 512, 512) and prob.min() > 0.99
 
@@ -267,8 +270,8 @@ def test_sample_input_hair_color_is_cached_per_image_and_crop():
     worker._input_hair_lock = threading.Lock()
     calls: list[tuple] = []
 
-    def compute(path, scale, vy, control):
-        calls.append((path, scale, vy))
+    def compute(path, parameters, control):
+        calls.append((path, dict(parameters)))
         return (10.0, 20.0, 30.0) if path == "a.png" else None
 
     worker._compute_input_hair_color = compute
@@ -284,6 +287,9 @@ def test_sample_input_hair_color_is_cached_per_image_and_crop():
     params["HairMakeupAreaSizeDecimalSlider"] = 3.0
     worker.sample_input_hair_color("a.png", params, {})
     assert len(calls) == 3
+    params["HairMakeupMaskModelSelection"] = "Hair Segmenter"
+    worker.sample_input_hair_color("a.png", params, {})
+    assert len(calls) == 4
 
 
 def test_guided_refine_pulls_spilled_mask_back_to_hair_edge():
@@ -433,3 +439,126 @@ def test_hair_recolor_in_frame_keeps_float_frames_float():
     )
     assert out.dtype == torch.float32
     assert out[2, 90, 150] > img[2, 90, 150].float()
+
+
+# ---------------------------------------------------------------------------
+# Hair Segmenter (MediaPipe selfie multiclass)
+# ---------------------------------------------------------------------------
+
+SEGMENTER = {"HairMakeupMaskModelSelection": "Hair Segmenter"}
+
+
+def _segmenter_all_hair(crop):
+    assert crop.shape == (3, 256, 256) and crop.dtype == torch.uint8
+    logits = torch.zeros(1, 6, 256, 256)
+    logits[:, 1] = 10.0
+    return logits
+
+
+def _parser_must_not_run(crop):
+    raise AssertionError("face parser called in Hair Segmenter mode")
+
+
+def test_segmenter_box_covers_top_of_head_and_long_hair():
+    from app.processors.hair_recolor import segmenter_box
+
+    _, kps = _frame_with_face()  # eyes at y=75, face unit 40px
+    left, top, right, bottom = segmenter_box(kps, 7.0, 8.0)
+    assert top <= 75 - 2.5 * 40 and bottom >= 75 + 8 * 40
+    assert (left + right) / 2 == 150 and right - left >= 7 * 40
+    _, _, _, lower = segmenter_box(kps, 7.0, 12.0)
+    assert lower > bottom
+    assert segmenter_box(kps, 7.0, 12.0)[1] == top  # reaching down keeps the top
+
+
+def test_crop_box_pads_off_frame_with_black():
+    from app.processors.hair_recolor import crop_box
+
+    img = torch.full((3, 100, 100), 200, dtype=torch.uint8)
+    crop = crop_box(img, (-100, 0, 100, 100), size=64)
+    assert crop.shape == (3, 64, 64) and crop.dtype == torch.uint8
+    assert int(crop[:, :, :20].max()) == 0
+    assert int(crop[:, :, 44:].min()) == 200
+
+
+def test_hair_segmenter_recolors_long_hair_without_parser():
+    from app.processors.hair_recolor import recolor_hair_in_frame
+
+    img, kps = _frame_with_face()
+    params = dict(
+        SEGMENTER,
+        HairMakeupRedSlider=30,
+        HairMakeupGreenSlider=60,
+        HairMakeupBlueSlider=200,
+        HairMakeupStrengthDecimalSlider=1.0,
+        HairMakeupLightnessDecimalSlider=0.0,
+        HairMakeupStrandRefineSlider=4,
+    )
+    out = recolor_hair_in_frame(
+        img, kps, params, _parser_must_not_run, segmenter_logits=_segmenter_all_hair
+    )
+    assert out.dtype == torch.uint8 and out.shape == img.shape
+    for y in (5, 90, 390):  # crown, face height, far below the shoulders
+        assert int(out[2, y, 150]) > int(img[2, y, 150]), y
+    assert torch.equal(out[:, 200, 5], img[:, 200, 5])  # outside the area width
+
+
+def test_hair_segmenter_without_hair_leaves_frame_untouched():
+    from app.processors.hair_recolor import recolor_hair_in_frame
+
+    img, kps = _frame_with_face()
+    out = recolor_hair_in_frame(
+        img,
+        kps,
+        dict(SEGMENTER, HairMakeupBlueSlider=200),
+        _parser_must_not_run,
+        segmenter_logits=lambda crop: torch.zeros(1, 6, 256, 256),
+    )
+    assert torch.equal(out, img)
+
+
+def test_segmenter_masks_use_their_own_cache_key():
+    from app.processors.hair_recolor import hair_area_key, recolor_hair_in_frame
+
+    assert hair_area_key({}) == (2.5, -0.125)
+    seg_key = hair_area_key(SEGMENTER)
+    assert seg_key == (0.0, 7.0, 8.0) and seg_key != hair_area_key({})
+
+    img, kps = _frame_with_face()
+    saved: list[tuple] = []
+    cache = HairMaskCache(
+        load=lambda crop: None, save=lambda prob, crop: saved.append(crop)
+    )
+    recolor_hair_in_frame(
+        img,
+        kps,
+        dict(SEGMENTER),
+        _parser_must_not_run,
+        hair_cache=cache,
+        segmenter_logits=_segmenter_all_hair,
+    )
+    assert saved == [seg_key]
+
+
+def test_input_hair_color_samples_with_segmenter(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    from app.processors.workers import function_worker as fw_mod
+
+    bgr = np.zeros((400, 300, 3), dtype=np.uint8)
+    bgr[:] = (40, 90, 150)
+    monkeypatch.setattr(fw_mod.misc_helpers, "read_image_file", lambda p: bgr)
+    worker = fw_mod.FunctionWorker.__new__(fw_mod.FunctionWorker)
+    worker.mp = SimpleNamespace(device="cpu")
+    worker._input_hair_colors = {}
+    worker._input_hair_lock = threading.Lock()
+    _, kps = _frame_with_face()
+    worker.run_detect = lambda *a, **k: (None, np.array([kps]), None)
+    worker.get_faceparser_logits = _parser_must_not_run
+    worker.get_hair_segmenter_logits = _segmenter_all_hair
+
+    color = worker.sample_input_hair_color("in.png", dict(SEGMENTER), {})
+    assert color is not None
+    assert all(abs(c - t) <= 3 for c, t in zip(color, (150, 90, 40)))
+    assert ("in.png", 0.0, 7.0, 8.0, "RetinaFace") in worker._input_hair_colors

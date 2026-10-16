@@ -22,6 +22,16 @@ MIN_CHROMA_RATIO = 0.5
 MAX_CHROMA_RATIO = 1.25
 
 CropKey = tuple[float, ...]
+ProbFn = Callable[[torch.Tensor], torch.Tensor]
+
+FACE_PARSER = "Face Parser"
+HAIR_SEGMENTER = "Hair Segmenter"
+SEGMENTER_HAIR_LABEL = 1
+SEGMENTER_SIZE = 256
+# How far the segmenter area reaches above the eyes, in face units.
+SEGMENTER_AREA_TOP = 3.0
+# Leading cache-key value that keeps segmenter masks apart from parser ones.
+SEGMENTER_KEY = 0.0
 
 
 @dataclass
@@ -244,25 +254,123 @@ def hair_area(parameters: dict) -> CropKey:
     )
 
 
+def uses_segmenter(parameters: dict) -> bool:
+    return parameters.get("HairMakeupMaskModelSelection", FACE_PARSER) == HAIR_SEGMENTER
+
+
+def segmenter_area(parameters: dict) -> tuple[float, float]:
+    """(width, reach_down) of the hair segmenter area, in face units."""
+    return (
+        float(parameters.get("HairMakeupAreaWidthDecimalSlider", 7.0)),
+        float(parameters.get("HairMakeupAreaReachDownDecimalSlider", 8.0)),
+    )
+
+
+def hair_area_key(parameters: dict) -> CropKey:
+    """Identifies the hair mask model and its area, e.g. for cache invalidation."""
+    if uses_segmenter(parameters):
+        return (SEGMENTER_KEY, *segmenter_area(parameters))
+    return hair_area(parameters)
+
+
+@torch.no_grad()
+def segmenter_hair_probability(logits: torch.Tensor) -> torch.Tensor:
+    """[1,6,H,W] selfie multiclass logits -> [1,H,W] hair probability."""
+    return torch.softmax(logits.float(), dim=1)[:, SEGMENTER_HAIR_LABEL]
+
+
+def segmenter_box(
+    kps: np.ndarray, width: float, reach_down: float
+) -> tuple[int, int, int, int]:
+    """(left, top, right, bottom) frame box the hair segmenter sees.
+
+    Upright and centred on the face, from above the head down ``reach_down``
+    face units below the eyes, so long hair is covered without losing the top.
+    A face unit is the larger of eye distance and eye-to-mouth distance, which
+    stays stable when the head turns.
+    """
+    pts = np.asarray(kps, dtype=np.float32)[:5]
+    eyes = (pts[0] + pts[1]) / 2
+    mouth = (pts[3] + pts[4]) / 2
+    unit = max(
+        float(np.linalg.norm(pts[1] - pts[0])),
+        float(np.linalg.norm(mouth - eyes)),
+        1.0,
+    )
+    cx = float(eyes[0] + mouth[0]) / 2
+    left = math.floor(cx - width * unit / 2)
+    top = math.floor(float(eyes[1]) - SEGMENTER_AREA_TOP * unit)
+    right = max(math.ceil(cx + width * unit / 2), left + 1)
+    bottom = max(math.ceil(float(eyes[1]) + reach_down * unit), top + 1)
+    return left, top, right, bottom
+
+
+@torch.no_grad()
+def crop_box(
+    img: torch.Tensor, box: Sequence[int], size: int = SEGMENTER_SIZE
+) -> torch.Tensor:
+    """[3,size,size] uint8 resample of the frame inside ``box`` (black off-frame)."""
+    left, top, right, bottom = (int(v) for v in box)
+    h, w = img.shape[-2:]
+    canvas = torch.zeros(
+        (3, bottom - top, right - left), dtype=torch.float32, device=img.device
+    )
+    y0, y1 = max(top, 0), min(bottom, h)
+    x0, x1 = max(left, 0), min(right, w)
+    if y1 > y0 and x1 > x0:
+        canvas[:, y0 - top : y1 - top, x0 - left : x1 - left] = img[
+            :, y0:y1, x0:x1
+        ].float()
+    out = F.interpolate(
+        canvas.unsqueeze(0),
+        size=(size, size),
+        mode="bilinear",
+        align_corners=False,
+        antialias=True,
+    )[0]
+    return out.round().clamp(0, 255).to(torch.uint8)
+
+
 @torch.no_grad()
 def hair_prob_for_crop(
     crop: torch.Tensor,
-    parser_logits: Callable[[torch.Tensor], torch.Tensor],
+    prob_fn: ProbFn,
     hair_cache: Optional[HairMaskCache],
     crop_key: CropKey,
 ) -> torch.Tensor:
-    """[1,H,W] hair probability of a 512px crop, from the cache when possible."""
+    """[1,H,W] hair probability of a crop, from the cache when possible."""
     size = (int(crop.shape[-2]), int(crop.shape[-1]))
     cached = hair_cache.load(crop_key) if hair_cache is not None else None
     if cached is not None:
         return prob_from_cache(cached, size, crop.device)
-    prob = hair_probability(parser_logits(crop))
+    prob = prob_fn(crop)
     if hair_cache is not None:
         hair_cache.save(prob_to_cache(prob), crop_key)
         smoothed = hair_cache.load(crop_key)
         if smoothed is not None:
             prob = prob_from_cache(smoothed, size, crop.device)
     return prob
+
+
+@torch.no_grad()
+def hair_crop_and_prob(
+    img: torch.Tensor,
+    kps: np.ndarray,
+    parameters: dict,
+    parser_logits: Callable[[torch.Tensor], torch.Tensor],
+    segmenter_logits: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(uint8 crop, [1,H,W] hair probability) of one face's hair area, uncached."""
+    if uses_segmenter(parameters) and segmenter_logits is not None:
+        crop = crop_box(img, segmenter_box(kps, *segmenter_area(parameters)))
+        return crop, segmenter_hair_probability(segmenter_logits(crop))
+    scale, vy_ratio = hair_area(parameters)
+    crop, _, _ = faceutil.warp_face_by_face_landmark_x(
+        img, kps, dsize=512, scale=scale, vy_ratio=vy_ratio
+    )
+    if crop.dtype != torch.uint8:
+        crop = crop.round().clamp(0, 255).to(torch.uint8)
+    return crop, hair_probability(parser_logits(crop))
 
 
 @torch.no_grad()
@@ -299,6 +407,83 @@ def mask_to_frame_roi(
     return warped, (top, bottom, left, right)
 
 
+# (mask over the frame ROI, ROI as (top, bottom, left, right), frame pixels per
+# 512px-crop pixel)
+FrameMask = tuple[torch.Tensor, tuple[int, int, int, int], float]
+
+
+def _mask_params(parameters: dict) -> tuple[float, float]:
+    return (
+        parameters.get("HairMakeupMaskThresholdDecimalSlider", 0.5),
+        parameters.get("HairMakeupEdgeSoftnessSlider", 4),
+    )
+
+
+@torch.no_grad()
+def _parser_frame_mask(
+    img: torch.Tensor,
+    kps: np.ndarray,
+    parameters: dict,
+    parser_logits: Callable[[torch.Tensor], torch.Tensor],
+    hair_cache: Optional[HairMaskCache],
+) -> Optional[FrameMask]:
+    crop_key = hair_area(parameters)
+    crop, _, M_c2o = faceutil.warp_face_by_face_landmark_x(
+        img, kps, dsize=512, scale=crop_key[0], vy_ratio=crop_key[1]
+    )
+    if crop.dtype != torch.uint8:
+        crop = crop.round().clamp(0, 255).to(torch.uint8)
+    prob = hair_prob_for_crop(
+        crop, lambda c: hair_probability(parser_logits(c)), hair_cache, crop_key
+    )
+    threshold, feather = _mask_params(parameters)
+    mask = mask_from_probability(prob, threshold=threshold, feather_px=feather)
+    placed = mask_to_frame_roi(mask, M_c2o, img.shape[-2:])
+    if placed is None:
+        return None
+    frame_px = math.sqrt(abs(float(np.linalg.det(np.asarray(M_c2o)[:2, :2]))))
+    return placed[0], placed[1], frame_px
+
+
+@torch.no_grad()
+def _segmenter_frame_mask(
+    img: torch.Tensor,
+    kps: np.ndarray,
+    parameters: dict,
+    segmenter_logits: Callable[[torch.Tensor], torch.Tensor],
+    hair_cache: Optional[HairMaskCache],
+) -> Optional[FrameMask]:
+    key = hair_area_key(parameters)
+    left, top, right, bottom = segmenter_box(kps, *segmenter_area(parameters))
+    h, w = img.shape[-2:]
+    y0, y1 = max(top, 0), min(bottom, h)
+    x0, x1 = max(left, 0), min(right, w)
+    if y1 <= y0 or x1 <= x0:
+        return None
+    crop = crop_box(img, (left, top, right, bottom))
+    prob = hair_prob_for_crop(
+        crop,
+        lambda c: segmenter_hair_probability(segmenter_logits(c)),
+        hair_cache,
+        key,
+    )
+    box_h, box_w = bottom - top, right - left
+    # Threshold and feather on a grid with 512px on the long side, so Edge
+    # Softness means the same as with the face parser's 512px crop.
+    frame_px = max(box_h, box_w) / 512.0
+    grid = (max(1, round(box_h / frame_px)), max(1, round(box_w / frame_px)))
+    prob = F.interpolate(
+        prob.float().unsqueeze(0), size=grid, mode="bilinear", align_corners=False
+    )[0]
+    threshold, feather = _mask_params(parameters)
+    mask = mask_from_probability(prob, threshold=threshold, feather_px=feather)
+    full = F.interpolate(
+        mask.unsqueeze(0), size=(box_h, box_w), mode="bilinear", align_corners=False
+    )[0]
+    roi_mask = full[:, y0 - top : y1 - top, x0 - left : x1 - left]
+    return roi_mask, (y0, y1, x0, x1), frame_px
+
+
 @torch.no_grad()
 def recolor_hair_in_frame(
     img: torch.Tensor,
@@ -306,30 +491,25 @@ def recolor_hair_in_frame(
     parameters: dict,
     parser_logits: Callable[[torch.Tensor], torch.Tensor],
     hair_cache: Optional[HairMaskCache] = None,
+    segmenter_logits: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
 ) -> torch.Tensor:
     """Recolor one face's hair directly in the [3,H,W] frame.
 
-    The parser finds hair in a 512px crop sized by the Hair Area sliders (which
-    can reach well past the face-editor crop, e.g. long hair); the mask is then
-    warped back and the recolor runs on the frame's own pixels, so strands stay
-    sharp however wide the crop is.
+    The hair mask comes either from the face parser on a 512px crop sized by the
+    Hair Area sliders, or from the hair segmenter on a tall area from above the
+    head down past the shoulders. Either way the mask is placed in the frame and
+    the recolor runs on the frame's own pixels, so strands stay sharp however
+    large the area is.
     """
-    crop_key = hair_area(parameters)
-    crop, _, M_c2o = faceutil.warp_face_by_face_landmark_x(
-        img, kps, dsize=512, scale=crop_key[0], vy_ratio=crop_key[1]
-    )
-    if crop.dtype != torch.uint8:
-        crop = crop.round().clamp(0, 255).to(torch.uint8)
-    prob = hair_prob_for_crop(crop, parser_logits, hair_cache, crop_key)
-    mask = mask_from_probability(
-        prob,
-        threshold=parameters.get("HairMakeupMaskThresholdDecimalSlider", 0.5),
-        feather_px=parameters.get("HairMakeupEdgeSoftnessSlider", 4),
-    )
-    placed = mask_to_frame_roi(mask, M_c2o, img.shape[-2:])
+    if uses_segmenter(parameters) and segmenter_logits is not None:
+        placed = _segmenter_frame_mask(
+            img, kps, parameters, segmenter_logits, hair_cache
+        )
+    else:
+        placed = _parser_frame_mask(img, kps, parameters, parser_logits, hair_cache)
     if placed is None:
         return img
-    frame_mask, (top, bottom, left, right) = placed
+    frame_mask, (top, bottom, left, right), frame_px = placed
     if float(frame_mask.max()) <= 0.0:
         return img
 
@@ -339,8 +519,7 @@ def recolor_hair_in_frame(
     )
     refine_radius = int(parameters.get("HairMakeupStrandRefineSlider", 0))
     if refine_radius > 0:
-        # The slider is in crop pixels; scale it to frame pixels.
-        frame_px = math.sqrt(abs(float(np.linalg.det(np.asarray(M_c2o)[:2, :2]))))
+        # The slider is in 512px-crop pixels; scale it to frame pixels.
         frame_mask = guided_refine_mask(
             roi_u8, frame_mask, max(1, int(round(refine_radius * frame_px)))
         )

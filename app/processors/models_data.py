@@ -723,6 +723,14 @@ models_list = [
         "url": f"{assets_repo}/v0.1.0/faceparser_resnet34.onnx",
     },
     {
+        # Google's MediaPipe selfie multiclass segmenter (Apache 2.0), converted
+        # from TFLite to ONNX with unchanged weights. Used for long-hair masks.
+        "model_name": "SelfieMulticlass",
+        "local_path": f"{models_dir}/selfie_multiclass_256x256.onnx",
+        "hash": "35ec1ecd9ee7f85073c99c00020b7f6751b69506eeacf683bc8665f6117f85b0",
+        "url": "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX/resolve/6db8421a7150ac20558f2c24675078eb3a1a04d0/onnx/model.onnx",
+    },
+    {
         "model_name": "combo_relu3_3_relu3_1",
         "local_path": f"{models_dir}/vgg_combo_relu3_3_relu3_1.onnx",
         "hash": "1068ee41e3c67dcfbbeccbc93e539eb06f89bba08618951bb33e9be2c1fbc986",
