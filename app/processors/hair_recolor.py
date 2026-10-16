@@ -75,12 +75,15 @@ def mask_from_probability(
     """Soft [1,H,W] hair mask from a hair probability map.
 
     Pixels ramp from 0 to 1 around ``threshold`` instead of flipping on a hard
-    argmax, which keeps edges and flyaways soft and stable.
+    argmax, which keeps edges and flyaways soft and stable. Feathering only
+    softens inward, so color never spills past the parser's hair boundary.
     """
     lo = max(0.0, threshold - MASK_RAMP_WIDTH / 2)
     hi = min(1.0, threshold + MASK_RAMP_WIDTH / 2)
     mask = ((probs - lo) / max(hi - lo, 1e-6)).clamp(0.0, 1.0)
-    return feather_mask(mask, feather_px)
+    if feather_px <= 0:
+        return mask
+    return torch.minimum(mask, feather_mask(mask, feather_px))
 
 
 @torch.no_grad()
@@ -102,19 +105,52 @@ def feather_mask(mask: torch.Tensor, feather_px: float) -> torch.Tensor:
 
 
 @torch.no_grad()
+def hair_similarity(
+    lab: torch.Tensor, mask: torch.Tensor, color_match: float
+) -> torch.Tensor:
+    """[1,H,W] weight in [0,1]: how much each pixel looks like the hair.
+
+    Robust Lab statistics (median and MAD) come from the mask's confident core.
+    Pixels within ``k`` deviations keep full weight and fade beyond it, where
+    ``k`` shrinks as ``color_match`` goes from 0 (off) to 1 (strict).
+    """
+    color_match = float(max(0.0, min(1.0, color_match)))
+    if color_match <= 0.0:
+        return torch.ones_like(mask)
+    core = mask[0] >= 0.8
+    if int(core.sum()) < 50:
+        core = mask[0] > 0.0
+    if int(core.sum()) < 50:
+        return torch.ones_like(mask)
+    vals = lab[:, core]
+    median = vals.median(dim=1).values
+    mad = (vals - median.view(3, 1)).abs().median(dim=1).values * 1.4826
+    k = 4.0 - 2.5 * color_match
+    scale_l = max(float(mad[0]) * k, 4.0)
+    scale_ab = max(float(mad[1:].max()) * k, 3.0)
+    d_l = (lab[0] - median[0]) / scale_l
+    d_ab = (lab[1:3] - median[1:3].view(2, 1, 1)) / scale_ab
+    dist = torch.sqrt(d_l * d_l + (d_ab * d_ab).sum(dim=0))
+    return torch.exp(-2.0 * (dist - 1.0).clamp(min=0.0) ** 2).unsqueeze(0)
+
+
+@torch.no_grad()
 def recolor_hair_lab(
     img: torch.Tensor,
     mask: torch.Tensor,
     color: Sequence[float],
     strength: float = 1.0,
     lightness: float = 0.5,
+    color_match: float = 0.0,
 ) -> torch.Tensor:
     """Recolor the masked hair of a [3,H,W] uint8 image in Lab space.
 
     Hue and chroma move to the target color while each pixel keeps its own
     brightness offset from the hair's mean, so strand highlights and shadows
     survive. ``lightness`` shifts the hair's mean brightness toward the target
-    color's (0 keeps it, 1 matches it). Returns a [3,H,W] uint8 image.
+    color's (0 keeps it, 1 matches it). ``color_match`` (0..1) fades out masked
+    pixels that don't look like the hair, such as background or skin showing
+    between strands. Returns a [3,H,W] uint8 image.
     """
     strength = float(max(0.0, min(1.0, strength)))
     lightness = float(max(0.0, min(1.0, lightness)))
@@ -137,6 +173,10 @@ def recolor_hair_lab(
     ).view(1, 3, 1, 1)
     target = kc.rgb_to_lab(target_rgb)[0, :, 0, 0]
 
+    w = w * hair_similarity(lab, w, color_match)
+    weight_sum = w.sum()
+    if weight_sum < 1.0:
+        return img
     mean = (lab * w).flatten(1).sum(dim=1) / weight_sum
     new_l = lab[0:1] + lightness * (target[0] - mean[0])
     new_l = new_l.clamp(0.0, 100.0)
