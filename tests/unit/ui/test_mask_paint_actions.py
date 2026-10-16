@@ -310,3 +310,23 @@ def test_range_action_reports_result(main_window, monkeypatch):
     main_window.videoSeekSlider = SimpleNamespace(value=lambda: 0)
     assert mpa.toolbar_action(main_window, "range") == 3
     assert toasts == ["Mask applied to frames 0\u20132 (3 frames with this face)."]
+
+
+def test_brush_circle_is_green_to_paint_and_red_to_erase(main_window, monkeypatch):
+    from PySide6 import QtCore, QtGui, QtWidgets
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    scene = QtWidgets.QGraphicsScene()
+    view = QtWidgets.QGraphicsView(scene)
+    image = QtGui.QImage(256, 256, QtGui.QImage.Format.Format_RGB32)
+    scene.addPixmap(QtGui.QPixmap.fromImage(image))
+    main_window.graphicsViewFrame = view
+    monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: True)
+
+    def circle_rgb():
+        mpa.update_brush_cursor(main_window, view, QtCore.QPointF(128, 128))
+        return getattr(main_window, mpa._CURSOR_ATTR)[0].pen().color().getRgb()[:3]
+
+    assert circle_rgb() == mpa._ADD_RGB
+    mpa.brush_settings(main_window)["erase"] = True
+    assert circle_rgb() == mpa._ERASE_RGB

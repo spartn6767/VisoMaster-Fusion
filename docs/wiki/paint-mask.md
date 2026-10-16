@@ -53,7 +53,7 @@ The buttons act on the selected face: the face you last painted or right-clicked
 
 ## Brush circle
 
-While Paint Mask is on, a circle follows the pointer over the frame. The solid circle is the brush size; the dashed circle inside it shows where the feathered (soft) edge starts.
+While Paint Mask is on, a circle follows the pointer over the frame. The solid circle is the brush size; the dashed circle inside it shows where the feathered (soft) edge starts. It's green when you paint and red when you erase (Erase ticked, or Shift held).
 
 ## Moving between frames
 

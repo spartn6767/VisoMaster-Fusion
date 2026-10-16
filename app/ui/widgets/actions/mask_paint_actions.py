@@ -759,7 +759,8 @@ def hide_brush_cursor(main_window: "MainWindow") -> None:
 def update_brush_cursor(
     main_window: "MainWindow", view: QtWidgets.QGraphicsView, pos: QtCore.QPointF
 ) -> None:
-    """Circle showing the brush size (solid) and where feathering starts (dashed)."""
+    """Circle showing the brush size (solid) and where feathering starts (dashed);
+    green to paint, red to erase (Erase ticked or Shift held)."""
     hide_brush_cursor(main_window)
     rect = aea._pixmap_rect(main_window)
     if not is_mask_paint_active(main_window) or rect is None or not rect.contains(pos):
@@ -767,6 +768,11 @@ def update_brush_cursor(
     brush = brush_settings(main_window)
     radius = float(brush["size"]) / 2.0
     inner = radius - float(brush["feather"])
+    shift = bool(
+        QtWidgets.QApplication.keyboardModifiers()
+        & QtCore.Qt.KeyboardModifier.ShiftModifier
+    )
+    color = QtGui.QColor(*(_ERASE_RGB if bool(brush["erase"]) != shift else _ADD_RGB))
     items = []
     for r, style in (
         (radius, QtCore.Qt.PenStyle.SolidLine),
@@ -774,7 +780,7 @@ def update_brush_cursor(
     ):
         if r <= 0 or (style == QtCore.Qt.PenStyle.DashLine and r >= radius):
             continue
-        pen = QtGui.QPen(QtGui.QColor(255, 255, 255, 220), 1, style)
+        pen = QtGui.QPen(color, 1, style)
         pen.setCosmetic(True)
         item = QtWidgets.QGraphicsEllipseItem(pos.x() - r, pos.y() - r, 2 * r, 2 * r)
         item.setPen(pen)
