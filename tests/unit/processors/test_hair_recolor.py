@@ -223,7 +223,6 @@ def test_cache_hit_skips_face_parser():
     )
     params = {
         "HairMakeupEnableToggle": True,
-        "HairMakeupModeSelection": "Natural",
         "HairMakeupRedSlider": 200,
         "HairMakeupGreenSlider": 30,
         "HairMakeupBlueSlider": 30,

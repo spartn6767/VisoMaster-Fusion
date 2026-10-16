@@ -316,15 +316,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "default": False,
             "help": "Enable hair makeup.",
         },
-        "HairMakeupModeSelection": {
-            "level": 2,
-            "label": "Hair Color Mode",
-            "options": ["Natural", "Overlay"],
-            "default": "Natural",
-            "parentToggle": "HairMakeupEnableToggle",
-            "requiredToggleValue": True,
-            "help": "Natural recolors in Lab space, keeping each strand's highlights and shadows, with a soft hair mask. Overlay is the original flat color blend.",
-        },
         "HairMakeupUseInputColorToggle": {
             "level": 2,
             "label": "Use Input's Hair Color",
@@ -366,20 +357,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "requiredToggleValue": True,
             "help": "Blue color adjustments.",
         },
-        "HairMakeupBlendAmountDecimalSlider": {
-            "level": 2,
-            "label": "Blend Amount",
-            "min_value": "0.01",
-            "max_value": "1.00",
-            "default": "0.05",
-            "decimals": 2,
-            "step": 0.01,
-            "parentToggle": "HairMakeupEnableToggle",
-            "requiredToggleValue": True,
-            "parentSelection": "HairMakeupModeSelection",
-            "requiredSelectionValue": "Overlay",
-            "help": "Blend the value: 0.00 represents the original color, 1.00 represents the full target color.",
-        },
         "HairMakeupStrengthDecimalSlider": {
             "level": 2,
             "label": "Strength",
@@ -390,8 +367,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "step": 0.01,
             "parentToggle": "HairMakeupEnableToggle",
             "requiredToggleValue": True,
-            "parentSelection": "HairMakeupModeSelection",
-            "requiredSelectionValue": "Natural",
             "help": "How far the hair color moves toward the target color. 0.00 keeps the original color.",
         },
         "HairMakeupLightnessDecimalSlider": {
@@ -404,8 +379,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "step": 0.01,
             "parentToggle": "HairMakeupEnableToggle",
             "requiredToggleValue": True,
-            "parentSelection": "HairMakeupModeSelection",
-            "requiredSelectionValue": "Natural",
             "help": "Shifts the hair's overall brightness toward the target color's, keeping strand contrast. 0.00 keeps the original brightness (hue change only); 1.00 matches the target (e.g. dark to blonde).",
         },
         "HairMakeupMaskThresholdDecimalSlider": {
@@ -418,8 +391,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "step": 0.01,
             "parentToggle": "HairMakeupEnableToggle",
             "requiredToggleValue": True,
-            "parentSelection": "HairMakeupModeSelection",
-            "requiredSelectionValue": "Natural",
             "help": "Hair confidence needed to recolor a pixel. Raise it if skin or background gets tinted; lower it to catch more strands.",
         },
         "HairMakeupEdgeSoftnessSlider": {
@@ -431,8 +402,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "step": 1,
             "parentToggle": "HairMakeupEnableToggle",
             "requiredToggleValue": True,
-            "parentSelection": "HairMakeupModeSelection",
-            "requiredSelectionValue": "Natural",
             "help": "Feathers the hair mask edge, in pixels of the 512px face crop.",
         },
         "HairMakeupStabilizeToggle": {
@@ -441,8 +410,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "default": False,
             "parentToggle": "HairMakeupEnableToggle",
             "requiredToggleValue": True,
-            "parentSelection": "HairMakeupModeSelection",
-            "requiredSelectionValue": "Natural",
             "help": "Computes each frame's hair mask once, stores it with the alignments, and smooths it over neighbouring frames to stop flicker. Needs the alignments cache; frames are cached the first time they are played or rendered with stored alignments.",
         },
         "HairMakeupSmoothingSlider": {
@@ -454,8 +421,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "step": 1,
             "parentToggle": "HairMakeupEnableToggle & HairMakeupStabilizeToggle",
             "requiredToggleValue": True,
-            "parentSelection": "HairMakeupModeSelection",
-            "requiredSelectionValue": "Natural",
             "help": "How many frames before and after are averaged into the cached hair mask. 0 uses only the current frame's cached mask.",
         },
         "EyeBrowsMakeupEnableToggle": {

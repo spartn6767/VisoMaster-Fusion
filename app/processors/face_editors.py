@@ -699,12 +699,10 @@ class FaceEditors:
         device = img.device
 
         # 1. Get semantic labels from the face parser model.
-        hair_natural = parameters.get("HairMakeupEnableToggle", False) and (
-            parameters.get("HairMakeupModeSelection", "Natural") == "Natural"
-        )
+        hair_on = bool(parameters.get("HairMakeupEnableToggle", False))
         hair_mask = None
         labels = None
-        if hair_natural:
+        if hair_on:
             hair_prob = None
             crop_key = (
                 float(parameters.get("FaceEditorCropScaleDecimalSlider", 0.0)),
@@ -729,7 +727,7 @@ class FaceEditors:
                 feather_px=parameters.get("HairMakeupEdgeSoftnessSlider", 4),
             )
         if labels is None:
-            needs_parser = not hair_natural or any(
+            needs_parser = not hair_on or any(
                 parameters.get(k, False)
                 for k in (
                     "FaceMakeupEnableToggle",
@@ -780,15 +778,6 @@ class FaceEditors:
                     strength=parameters.get("HairMakeupStrengthDecimalSlider", 0.8),
                     lightness=parameters.get("HairMakeupLightnessDecimalSlider", 0.5),
                 )
-            else:
-                out = self.face_parser_makeup_direct_rgb(
-                    out,
-                    labels,
-                    # FE-08: part must be a tuple, not a bare int
-                    part=(17,),
-                    color=color,
-                    blend_factor=parameters["HairMakeupBlendAmountDecimalSlider"],
-                )
 
         if parameters.get("EyeBrowsMakeupEnableToggle", False):
             color = [
@@ -830,7 +819,6 @@ class FaceEditors:
             10: parameters.get("FaceMakeupEnableToggle", False),
             12: parameters.get("LipsMakeupEnableToggle", False),
             13: parameters.get("LipsMakeupEnableToggle", False),
-            17: parameters.get("HairMakeupEnableToggle", False) and not hair_natural,
         }
 
         combined_mask = torch.zeros_like(labels, dtype=torch.float32, device=device)
