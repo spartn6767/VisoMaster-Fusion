@@ -122,7 +122,6 @@ def _load_main_ui_module():
         "app.ui.widgets.widget_components": widget_components,
         "app.ui.widgets.event_filters": _module(
             "app.ui.widgets.event_filters",
-            EditModeArrowKeyFilter=type("EditModeArrowKeyFilter", (), {}),
             GraphicsViewEventFilter=type("GraphicsViewEventFilter", (), {}),
             VideoSeekSliderEventFilter=type("VideoSeekSliderEventFilter", (), {}),
             videoSeekSliderLineEditEventFilter=type(

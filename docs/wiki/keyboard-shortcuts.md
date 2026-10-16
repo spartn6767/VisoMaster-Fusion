@@ -13,7 +13,6 @@ Single-letter shortcuts don't work while a text box (such as search) has focus.
 | F11 | Fullscreen |
 | Esc | Leave fullscreen / Theatre Mode |
 | V / C | Forward / back 1 frame (Copy / Paste in the edit modes, see below) |
-| Right / Left | Forward / back 1 frame while Edit Alignments or Paint Mask is on (also when the seek bar has focus). No arrow key scrolls the preview. |
 | D / A | Forward / back by the frame-step value |
 | Z | Jump to start (< Paste in the edit modes) |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo an alignment or mask edit (while Edit Alignments or Paint Mask is on) |
@@ -38,7 +37,7 @@ While either mode is on, these keys replace their usual action and work on the s
 | Z | < Paste (from the earlier frame) | < Paste |
 | X | Paste > (from the later frame) | Paste > |
 | M | Delete Face | Reset Frame |
-| Left / Right | Back / forward 1 frame | Back / forward 1 frame |
+| K / L | Back / forward 1 frame | Back / forward 1 frame |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo | Undo / redo |
 
 <!-- Edit-mode keys: EDIT_MODE_KEYS in app/ui/widgets/actions/alignment_edit_actions.py; Face Compare's X shortcut is switched off in edit_toolbar_actions.sync_edit_toolbar. -->
@@ -65,6 +64,6 @@ While either mode is on, these keys replace their usual action and work on the s
 
 ## Free keys
 
-Not used in the main window: B, E, G, H, I, J, K, L, M, O, U, Y, the number keys, and most Ctrl/Shift combinations.
+Not used in the main window: B, E, G, H, I, J, O, U, Y, the number keys, and most Ctrl/Shift combinations.
 
 <!-- Help > View Shortcuts shows this page (HTML comments like this one are hidden), so update it whenever a shortcut is added or changed. -->

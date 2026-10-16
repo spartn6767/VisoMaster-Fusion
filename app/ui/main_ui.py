@@ -29,7 +29,6 @@ from app.processors.utils import platform_support
 from app.processors.workers.function_worker import FunctionWorker
 from app.ui.widgets import widget_components
 from app.ui.widgets.event_filters import (
-    EditModeArrowKeyFilter,
     GraphicsViewEventFilter,
     VideoSeekSliderEventFilter,
     videoSeekSliderLineEditEventFilter,
@@ -298,17 +297,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self.graphicsViewFrame,
         )
         self.graphicsViewFrame.installEventFilter(graphics_event_filter)
-        self.edit_mode_arrow_filter = EditModeArrowKeyFilter(self, self)
-        QtWidgets.QApplication.instance().installEventFilter(
-            self.edit_mode_arrow_filter
-        )
-        for scroll_bar in (
-            self.graphicsViewFrame.horizontalScrollBar(),
-            self.graphicsViewFrame.verticalScrollBar(),
-        ):
-            # Arrow keys step frames in the edit modes, so the bars never take them.
-            scroll_bar.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-            scroll_bar.installEventFilter(graphics_event_filter)
 
         video_control_actions.enable_zoom_and_pan(self, self.graphicsViewFrame)
 
@@ -1200,11 +1188,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.move_slider_to_nearest_marker(self, "next")
             case QtCore.Qt.Key_Q:
                 video_control_actions.move_slider_to_nearest_marker(self, "previous")
-            case QtCore.Qt.Key_Left | QtCore.Qt.Key_Right:
+            case QtCore.Qt.Key_K | QtCore.Qt.Key_L:
                 from app.ui.widgets.actions import alignment_edit_actions
 
                 alignment_edit_actions.step_frame_shortcut(
-                    self, event.key() == QtCore.Qt.Key_Right
+                    self, event.key() == QtCore.Qt.Key_L
                 )
             case QtCore.Qt.Key_N | QtCore.Qt.Key_P:
                 from app.ui.widgets.actions import alignment_edit_actions

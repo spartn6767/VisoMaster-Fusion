@@ -13,60 +13,12 @@ if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 
 
-class EditModeArrowKeyFilter(QtCore.QObject):
-    """App-wide: Left/Right step frames in Edit Alignments / Paint Mask even when
-    a button has focus (buttons would otherwise move focus with the arrows).
-    Typing boxes, dropdowns, sliders and lists keep their arrows."""
-
-    _KEEP_ARROWS = (
-        QtWidgets.QLineEdit,
-        QtWidgets.QAbstractSpinBox,
-        QtWidgets.QTextEdit,
-        QtWidgets.QPlainTextEdit,
-        QtWidgets.QComboBox,
-        QtWidgets.QAbstractSlider,
-        QtWidgets.QAbstractItemView,
-    )
-
-    def __init__(self, main_window: "MainWindow", parent=None):
-        super().__init__(parent)
-        self.main_window = main_window
-
-    def eventFilter(self, obj, event):
-        if (
-            event.type() != QtCore.QEvent.Type.KeyPress
-            or event.key() not in (QtCore.Qt.Key_Left, QtCore.Qt.Key_Right)
-            or event.modifiers() != QtCore.Qt.KeyboardModifier.NoModifier
-            or not isinstance(obj, QtWidgets.QWidget)
-            or obj.window() is not self.main_window
-            or isinstance(obj, self._KEEP_ARROWS)
-        ):
-            return False
-        return alignment_edit_actions.step_frame_shortcut(
-            self.main_window, event.key() == QtCore.Qt.Key_Right
-        )
-
-
 class GraphicsViewEventFilter(QtCore.QObject):
     def __init__(self, main_window: "MainWindow", parent=None):
         super().__init__(parent)
         self.main_window = main_window
 
     def eventFilter(self, graphics_object: QtWidgets.QGraphicsView, event):
-        if event.type() == QtCore.QEvent.Type.KeyPress and event.key() in (
-            QtCore.Qt.Key_Left,
-            QtCore.Qt.Key_Right,
-        ):
-            # Never scroll the preview; in an edit mode the arrows step frames.
-            alignment_edit_actions.step_frame_shortcut(
-                self.main_window, event.key() == QtCore.Qt.Key_Right
-            )
-            return True
-        if event.type() == QtCore.QEvent.Type.KeyPress and event.key() in (
-            QtCore.Qt.Key_Up,
-            QtCore.Qt.Key_Down,
-        ):
-            return True  # arrow keys never scroll the preview
         if event.type() == QtCore.QEvent.Type.MouseButtonPress:
             if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 if alignment_edit_actions.is_alignment_edit_active(
