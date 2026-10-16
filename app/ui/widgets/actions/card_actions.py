@@ -174,8 +174,14 @@ def find_target_faces(main_window: "MainWindow"):
     if video_control_actions.block_if_issue_scan_active(main_window, "find faces"):
         return
 
-    control = main_window.control.copy()
     video_processor = main_window.video_processor
+    if video_processor.file_type == "video" and video_processor.processing:
+        # The playback threads share the capture; reading it concurrently
+        # crashes FFmpeg, so stop the preview before grabbing the frame.
+        video_processor.stop_processing()
+        print("[INFO] Stopped preview playback before finding faces.")
+
+    control = main_window.control.copy()
     if video_processor.media_path:
         frame = None
         media_capture = video_processor.media_capture
