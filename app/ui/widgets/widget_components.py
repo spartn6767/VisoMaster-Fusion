@@ -603,6 +603,82 @@ class TargetMediaCardButton(CardButton):
         self.deselect_currently_selected_video(main_window)
         self.deleteLater()
 
+    def rename_target_media(self):
+        main_window = self.main_window
+        if video_control_actions.block_if_issue_scan_active(
+            main_window, "rename target media"
+        ):
+            return
+        was_loaded = main_window.selected_video_button is self
+        if was_loaded and main_window.video_processor.recording:
+            common_widget_actions.create_and_show_messagebox(
+                main_window,
+                "Recording In Progress",
+                "Stop the recording before renaming this file.",
+                parent_widget=main_window,
+            )
+            return
+
+        old_path = self.media_path
+        stem, ext = os.path.splitext(os.path.basename(old_path))
+        new_name, ok = QtWidgets.QInputDialog.getText(
+            main_window,
+            "Rename File",
+            f"New name (keeps the {ext} extension):" if ext else "New name:",
+            text=stem,
+        )
+        if not ok or new_name.strip() in ("", stem):
+            return
+
+        if was_loaded:
+            answer = QtWidgets.QMessageBox.question(
+                main_window,
+                "Rename Loaded Media",
+                "This file is loaded. Renaming it reloads it, which clears its "
+                "target faces and markers. Alignments are kept.\n\nContinue?",
+            )
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+            # The file can't be renamed on Windows while a capture holds it open.
+            main_window.video_processor.stop_processing()
+            for capture in (
+                main_window.video_processor.media_capture,
+                self.media_capture,
+            ):
+                if capture:
+                    capture.release()
+
+        try:
+            new_path = misc_helpers.rename_media_file(old_path, new_name)
+        except (ValueError, OSError) as e:
+            common_widget_actions.create_and_show_messagebox(
+                main_window,
+                "Rename Failed",
+                f"Couldn't rename {os.path.basename(old_path)}:\n{e}",
+                parent_widget=main_window,
+            )
+            if was_loaded:
+                self.load_media()
+                self.setChecked(True)
+            return
+
+        print(f"[INFO] Renamed {old_path} to {new_path}")
+        self.media_path = os.path.normpath(new_path)
+        self.text_label.setText(os.path.basename(self.media_path))
+        self.setToolTip(self.media_path)
+        list_item = getattr(self, "list_item", None)
+        if list_item is not None:
+            list_item.setFileInfo(QtCore.QFileInfo(self.media_path))
+            tooltip = list_item.to_tooltip()
+            if tooltip:
+                self.setToolTip(tooltip)
+        alignments = getattr(main_window, "alignments", None)
+        if alignments is not None:
+            alignments.rename_media(old_path, self.media_path)
+        if was_loaded:
+            self.load_media()
+            self.setChecked(True)
+
     def delete_target_media_to_trash(self):
         main_window = self.main_window
         if video_control_actions.block_if_issue_scan_active(
@@ -655,6 +731,10 @@ class TargetMediaCardButton(CardButton):
         self.delete_action.triggered.connect(self.delete_target_media_to_trash)
         self.popMenu.addAction(self.delete_action)
 
+        self.rename_action = QtGui.QAction("Rename file...", self)
+        self.rename_action.triggered.connect(self.rename_target_media)
+        self.popMenu.addAction(self.rename_action)
+
         self.open_path_action = QtGui.QAction("Open file location", self)
         self.open_path_action.triggered.connect(self.open_target_path_by_explorer)
         self.popMenu.addAction(self.open_path_action)
@@ -673,6 +753,7 @@ class TargetMediaCardButton(CardButton):
             scan_active = video_control_actions.is_issue_scan_active(self.main_window)
             self.remove_action.setEnabled(not scan_active)
             self.delete_action.setEnabled(not scan_active)
+            self.rename_action.setEnabled(not scan_active and not self.is_webcam)
             self.clear_all_media_action.setEnabled(
                 bool(self.main_window.target_videos) and not scan_active
             )
@@ -681,6 +762,7 @@ class TargetMediaCardButton(CardButton):
             self._release_context_menu(
                 "remove_action",
                 "delete_action",
+                "rename_action",
                 "open_path_action",
                 "clear_all_media_action",
             )

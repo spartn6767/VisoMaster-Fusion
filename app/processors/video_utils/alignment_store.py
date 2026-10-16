@@ -347,6 +347,14 @@ class AlignmentStore:
             self.media_path = media_path
             self._revision += 1
 
+    def rename_media(self, old_path: Optional[str], new_path: str) -> None:
+        """Follows a rename of the bound media file, keeping its entries."""
+        with self._lock:
+            if self.media_path is not None and _norm(self.media_path) == _norm(
+                old_path
+            ):
+                self.media_path = new_path
+
     def remove_frame(self, frame_number: int) -> None:
         with self._lock:
             if self._frames.pop(int(frame_number), None) is not None:
