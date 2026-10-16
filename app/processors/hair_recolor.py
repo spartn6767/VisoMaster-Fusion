@@ -289,7 +289,8 @@ def segmenter_box(
     A face unit is the larger of eye distance and eye-to-mouth distance, which
     stays stable when the head turns.
     """
-    pts = np.asarray(kps, dtype=np.float32)[:5]
+    # Makeup gets the 203-point landmarks when available, so map any layout to 5.
+    pts = faceutil.convert_face_landmark_x_to_5(np.asarray(kps, dtype=np.float32))
     eyes = (pts[0] + pts[1]) / 2
     mouth = (pts[3] + pts[4]) / 2
     unit = max(

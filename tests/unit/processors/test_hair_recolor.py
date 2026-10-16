@@ -118,6 +118,7 @@ def test_recolor_only_touches_masked_pixels():
 import numpy as np  # noqa: E402
 
 from app.processors.hair_recolor import (  # noqa: E402
+    segmenter_box,
     HairMaskCache,
     prob_from_cache,
     prob_to_cache,
@@ -562,3 +563,12 @@ def test_input_hair_color_samples_with_segmenter(monkeypatch):
     assert color is not None
     assert all(abs(c - t) <= 3 for c, t in zip(color, (150, 90, 40)))
     assert ("in.png", 0.0, 7.0, 8.0, "RetinaFace") in worker._input_hair_colors
+
+
+def test_segmenter_box_accepts_203_point_landmarks():
+    kps5 = np.array(
+        [[270, 222], [318, 220], [296, 242], [283, 258], [318, 258]], np.float32
+    )
+    kps203 = np.zeros((203, 2), np.float32)
+    kps203[[197, 198, 201, 48, 66]] = kps5
+    assert segmenter_box(kps203, 7.0, 8.0) == segmenter_box(kps5, 7.0, 8.0)
