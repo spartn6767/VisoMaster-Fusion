@@ -297,6 +297,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self.graphicsViewFrame,
         )
         self.graphicsViewFrame.installEventFilter(graphics_event_filter)
+        for scroll_bar in (
+            self.graphicsViewFrame.horizontalScrollBar(),
+            self.graphicsViewFrame.verticalScrollBar(),
+        ):
+            # Arrow keys step frames in the edit modes, so the bars never take them.
+            scroll_bar.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+            scroll_bar.installEventFilter(graphics_event_filter)
 
         video_control_actions.enable_zoom_and_pan(self, self.graphicsViewFrame)
 

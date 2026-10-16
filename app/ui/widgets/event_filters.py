@@ -23,10 +23,11 @@ class GraphicsViewEventFilter(QtCore.QObject):
             QtCore.Qt.Key_Left,
             QtCore.Qt.Key_Right,
         ):
-            # The view would scroll; in an edit mode the arrows step frames instead.
-            return alignment_edit_actions.step_frame_shortcut(
+            # Never scroll the preview; in an edit mode the arrows step frames.
+            alignment_edit_actions.step_frame_shortcut(
                 self.main_window, event.key() == QtCore.Qt.Key_Right
             )
+            return True
         if event.type() == QtCore.QEvent.Type.MouseButtonPress:
             if event.button() == QtCore.Qt.MouseButton.LeftButton:
                 if alignment_edit_actions.is_alignment_edit_active(
