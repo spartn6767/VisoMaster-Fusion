@@ -207,6 +207,14 @@ def _sync_bar_buttons(main_window: "MainWindow") -> None:
         button.setEnabled(bool(enabled.get(key, False)))
 
 
+def default_bar_position(bar: QtWidgets.QWidget) -> tuple[int, int]:
+    """Bottom-right corner of the viewer, until the user drags the bar."""
+    parent = bar.parentWidget()
+    if parent is None:
+        return (8, 8)
+    return (parent.width() - bar.width() - 8, parent.height() - bar.height() - 8)
+
+
 def clamp_bar_position(bar: QtWidgets.QWidget, point: QtCore.QPoint) -> QtCore.QPoint:
     """Keeps the floating brush bar fully inside its parent (the viewer)."""
     parent = bar.parentWidget()
@@ -334,7 +342,7 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     setattr(main_window, _BAR_BUTTONS_ATTR, bar_buttons)
 
     bar.adjustSize()
-    x, y = brush.get("bar_pos", (8, 8))
+    x, y = brush.get("bar_pos") or default_bar_position(bar)
     bar.move(clamp_bar_position(bar, QtCore.QPoint(int(x), int(y))))
     setattr(main_window, _BRUSH_BAR_ATTR, bar)
     return bar

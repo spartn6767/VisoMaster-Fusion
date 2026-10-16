@@ -286,7 +286,9 @@ def _build_alignment_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
         )
     )
     bar.adjustSize()
-    x, y = getattr(main_window, _ALIGN_BAR_POS_ATTR, (8, 8))
+    x, y = getattr(main_window, _ALIGN_BAR_POS_ATTR, None) or mpa.default_bar_position(
+        bar
+    )
     bar.move(mpa.clamp_bar_position(bar, QtCore.QPoint(int(x), int(y))))
     setattr(main_window, _ALIGN_BAR_ATTR, bar)
     setattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, buttons)

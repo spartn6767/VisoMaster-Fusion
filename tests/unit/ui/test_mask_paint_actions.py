@@ -171,7 +171,10 @@ def test_brush_bar_drags_within_viewer():
     rows = bar.layout()
     assert isinstance(rows, QtWidgets.QVBoxLayout) and rows.count() == 2
     assert rows.itemAt(1).layout().count() == len(mpa.BAR_ACTIONS)
-    assert handle is not None and bar.pos() == QtCore.QPoint(8, 8)
+    assert handle is not None and bar.pos() == QtCore.QPoint(
+        *mpa.default_bar_position(bar)
+    )
+    bar.move(QtCore.QPoint(8, 8))
 
     def send(kind, x, y):
         button = QtCore.Qt.MouseButton.LeftButton
@@ -330,3 +333,15 @@ def test_brush_circle_is_green_to_paint_and_red_to_erase(main_window, monkeypatc
     assert circle_rgb() == mpa._ADD_RGB
     mpa.brush_settings(main_window)["erase"] = True
     assert circle_rgb() == mpa._ERASE_RGB
+
+
+def test_floating_bar_defaults_to_bottom_right():
+    from PySide6 import QtWidgets
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    view = QtWidgets.QWidget()
+    view.resize(800, 600)
+    bar = QtWidgets.QFrame(view)
+    bar.resize(200, 50)
+    assert mpa.default_bar_position(bar) == (592, 542)
+    assert mpa.default_bar_position(QtWidgets.QFrame()) == (8, 8)
