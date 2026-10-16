@@ -53,7 +53,6 @@ from app.processors.models_data import (
     models_list,
     fp16_safe_models_list,
     tensorrt_shape_infer_models,
-    tensorrt_excluded_models,
     ARCFACE_DST,
     FFHQ_KPS,
     LANDMARKS_SUBSET_IDXS,
@@ -546,23 +545,6 @@ class ModelsProcessor(QtCore.QObject):
             except Exception as e:
                 print(f"[WARN] Failed to clean auxiliary files in {cache_dir}: {e}")
 
-    def _model_providers(self, model_name: str, model_trt_options: dict) -> list:
-        """self.providers with model-specific TensorRT options.
-
-        Models in tensorrt_excluded_models drop the TensorRT EP and load with
-        the remaining providers (CUDA/CPU).
-        """
-        model_providers: list = []
-        for p in self.providers:
-            name = p[0] if isinstance(p, tuple) else p
-            if name != "TensorrtExecutionProvider":
-                model_providers.append(p)
-            elif model_name not in tensorrt_excluded_models:
-                model_providers.append(("TensorrtExecutionProvider", model_trt_options))
-        if not model_providers:
-            model_providers.append("CPUExecutionProvider")
-        return model_providers
-
     def load_model(self, model_name: str, session_options: Any = None) -> Any | None:
         """
         Loads an AI model (ONNX) with thread safety.
@@ -612,7 +594,19 @@ class ModelsProcessor(QtCore.QObject):
             else:
                 model_trt_options["trt_fp16_enable"] = False
 
-            model_providers = self._model_providers(model_name, model_trt_options)
+            # Reconstruct the providers with model-specific options
+            model_providers = []
+            for p in self.providers:
+                if isinstance(p, tuple) and p[0] == "TensorrtExecutionProvider":
+                    model_providers.append(
+                        ("TensorrtExecutionProvider", model_trt_options)
+                    )
+                elif p == "TensorrtExecutionProvider":
+                    model_providers.append(
+                        ("TensorrtExecutionProvider", model_trt_options)
+                    )
+                else:
+                    model_providers.append(p)
 
             is_tensorrt_load = any(
                 (p[0] if isinstance(p, tuple) else p) == "TensorrtExecutionProvider"
