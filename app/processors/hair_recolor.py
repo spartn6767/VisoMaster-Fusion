@@ -14,6 +14,9 @@ from app.processors.video_utils.alignment_store import HAIR_PROB_SIZE
 
 HAIR_LABEL = 17
 MASK_RAMP_WIDTH = 0.3
+# Bounds on how much a strand's saturation may differ from the hair average.
+MIN_CHROMA_RATIO = 0.5
+MAX_CHROMA_RATIO = 1.25
 
 CropKey = tuple[float, ...]
 
@@ -148,9 +151,9 @@ def recolor_hair_lab(
 ) -> torch.Tensor:
     """Recolor the masked hair of a [3,H,W] uint8 image in Lab space.
 
-    Hue and chroma move to the target color while each pixel keeps its own
-    brightness offset from the hair's mean, so strand highlights and shadows
-    survive. ``lightness`` shifts the hair's mean brightness toward the target
+    Every pixel takes the target's hue; brightness and relative saturation
+    stay per pixel, so strand highlights and shadows survive without shadows
+    drifting to the opposite (e.g. blue) hue. ``lightness`` shifts the hair's mean brightness toward the target
     color's (0 keeps it, 1 matches it). Returns a [3,H,W] uint8 image.
     """
     strength = float(max(0.0, min(1.0, strength)))
@@ -180,9 +183,12 @@ def recolor_hair_lab(
     # Darker pixels can't hold the target's full chroma in sRGB; scaling it by
     # relative lightness avoids gamut clipping that would crush the strands.
     chroma_scale = (new_l / max(float(target[0]), 1.0)).clamp(0.0, 1.0)
-    new_ab = target[1:3].view(2, 1, 1) * chroma_scale + (
-        lab[1:3] - mean[1:3].view(2, 1, 1)
+    chroma = lab[1:3].norm(dim=0, keepdim=True)
+    mean_chroma = (chroma * w).sum() / weight_sum
+    chroma_ratio = (chroma / mean_chroma.clamp(min=1.0)).clamp(
+        MIN_CHROMA_RATIO, MAX_CHROMA_RATIO
     )
+    new_ab = target[1:3].view(2, 1, 1) * chroma_scale * chroma_ratio
     recolored = torch.cat([new_l, new_ab], dim=0)
     rgb = kc.lab_to_rgb(recolored.unsqueeze(0))[0].clamp(0.0, 1.0)
 

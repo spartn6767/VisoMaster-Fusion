@@ -356,3 +356,15 @@ def test_compute_input_hair_color_end_to_end(monkeypatch):
     color = worker.sample_input_hair_color("in.png", params, {})
     assert color is not None
     assert all(abs(c - t) <= 3 for c, t in zip(color, (150, 90, 40)))
+
+
+def test_neutral_shadows_under_warm_hair_do_not_turn_blue():
+    img = torch.zeros(3, 32, 32, dtype=torch.uint8)
+    img[:, :, :16] = torch.tensor([110, 80, 55], dtype=torch.uint8).view(3, 1, 1)
+    img[:, :, 16:] = torch.tensor([22, 20, 20], dtype=torch.uint8).view(3, 1, 1)
+    full = torch.ones(1, 32, 32)
+
+    for color in ([0, 0, 0], [150, 70, 40], [220, 190, 130]):
+        out = recolor_hair_lab(img, full, color, strength=1.0, lightness=0.5)
+        lab = kc.rgb_to_lab(out.float().div(255).unsqueeze(0))[0]
+        assert lab[2].min() > -1.0, color
