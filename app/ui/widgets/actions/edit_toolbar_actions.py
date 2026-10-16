@@ -111,6 +111,12 @@ ALIGNMENT_FRAME_ACTIONS = (
     ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
     ("redetect", "Re-detect Frame", "Drop this frame's stored faces."),
     ("reset_all", "Reset All Alignments", "Discard every stored alignment."),
+    (
+        "check",
+        "Find Frames to Check",
+        "Mark frames where landmarks jump or a face briefly disappears "
+        "(Shift+N / Shift+P to step through them).",
+    ),
 )
 ALIGNMENT_FACE_ACTIONS = (
     ("copy", "Copy", "Copy the selected face."),
@@ -120,6 +126,12 @@ ALIGNMENT_FACE_ACTIONS = (
     ("assign", "Assign to Target", "Pin the selected face to a target face."),
     ("add_target", "Add as Target", "Create a target face from the selected face."),
     ("delete", "Delete Face", "Delete the selected face."),
+    (
+        "fill",
+        "Fill Between Edits",
+        "Blend the selected face between the previous frame you edited it on "
+        "and this frame.",
+    ),
 )
 
 
@@ -144,6 +156,8 @@ def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
         result = True
     elif key == "reset_all":
         result = aea.reset_all_alignments(main_window)
+    elif key == "check":
+        result = aea.find_frames_to_check(main_window)
     elif key == "paste":
         result = aea.paste_face(main_window, frame_number, face_index)
     elif face_index is not None:
@@ -162,6 +176,8 @@ def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
         elif key == "delete":
             aea.delete_face(main_window, frame_number, face_index)
             result = True
+        elif key == "fill":
+            result = aea.fill_between_edits(main_window, frame_number, face_index)
     sync_alignment_bar(main_window)
     return result
 
@@ -273,6 +289,7 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
     enabled = {
         "redetect": frame_number in store,
         "reset_all": len(store) > 0,
+        "check": len(store) > 0,
         "undo": store.can_undo(),
         "redo": store.can_redo(),
         "paste": getattr(main_window, aea._CLIPBOARD_ATTR, None) is not None,
@@ -287,6 +304,8 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
             assign=True,
             add_target=True,
             delete=True,
+            fill=bool(store.edited_frames())
+            and store.edited_frames()[0] < frame_number - 1,
         )
     for key, button in getattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, {}).items():
         button.setEnabled(bool(enabled.get(key, False)))

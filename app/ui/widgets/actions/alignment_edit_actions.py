@@ -215,6 +215,9 @@ def _refresh(main_window: "MainWindow") -> None:
     from app.ui.widgets.actions import common_actions
 
     QtCore.QTimer.singleShot(0, lambda: common_actions.refresh_frame(main_window))
+    slider = getattr(main_window, "videoSeekSlider", None)
+    if isinstance(slider, QtWidgets.QWidget):
+        slider.update()  # edited-frame marks
 
 
 def _pixmap_rect(main_window: "MainWindow") -> Optional[QtCore.QRectF]:
@@ -449,6 +452,125 @@ def add_as_target_face(
         return None
     assign_target(main_window, frame_number, face_index, face_id)
     return face_id
+
+
+_INTERPOLATED = ("bbox", "kps_5", "kps_all", "kps_203")
+
+
+def _matching_face(
+    faces: Sequence[dict], face_id: Optional[str], bbox: Sequence[float]
+) -> Optional[int]:
+    """Index of the face with ``face_id``, else (no id) the one nearest ``bbox``."""
+    if face_id is not None:
+        return next(
+            (i for i, f in enumerate(faces) if f.get("face_id") == face_id), None
+        )
+    x1, y1, x2, y2 = bbox
+    return nearest_face_index(faces, (x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+
+def fill_between_edits(
+    main_window: "MainWindow", frame_number: int, face_index: int
+) -> int:
+    """Blends the selected face between the previous frame where it was edited by
+    hand and this frame; returns how many frames were filled."""
+    faces = _frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return 0
+    end_face = faces[face_index]
+    face_id = end_face.get("face_id")
+    store = main_window.alignments
+    start, start_face = None, None
+    for n in reversed(store.edited_frames()):
+        if n >= frame_number:
+            continue
+        candidates = _frame_faces(main_window, n)
+        index = _matching_face(candidates, face_id, end_face["bbox"])
+        if index is not None and candidates[index].get("source") == SOURCE_MANUAL:
+            start, start_face = n, candidates[index]
+            break
+    if start is None or start_face is None or frame_number - start < 2:
+        return 0
+    span = frame_number - start
+    with store.edit(range(start + 1, frame_number)):
+        for n in range(start + 1, frame_number):
+            t = (n - start) / span
+            face = dict(start_face if t < 0.5 else end_face)
+            for key in _INTERPOLATED:
+                a, b = start_face.get(key), end_face.get(key)
+                if a is None or b is None or np.shape(a) != np.shape(b):
+                    face[key] = None
+                else:
+                    face[key] = (1 - t) * np.asarray(a) + t * np.asarray(b)
+            face.update(source=SOURCE_MANUAL, mask=None, mask_skip=False)
+            face.pop("hair_prob", None)
+            existing = _frame_faces(main_window, n)
+            index = _matching_face(existing, face_id, face["bbox"])
+            if index is not None and existing[index].get("mask") is not None:
+                face.pop("mask")  # keep a painted keyframe
+                face.pop("mask_skip")
+            if index is None:
+                store.add_face(n, face, 1, 1)
+            else:
+                store.update_face(n, index, 1, 1, **face)
+    _refresh(main_window)
+    return span - 1
+
+
+def jump_to_edited(main_window: "MainWindow", step: int, check: bool = False) -> bool:
+    """Seeks to the next/previous edited frame, or frame to check (check=True)."""
+    if main_window.video_processor.file_type != "video":
+        return False
+    current = current_frame_number(main_window)
+    store = main_window.alignments
+    if check:
+        frames = review_frames(main_window)
+        later = [n for n in frames if n > current]
+        earlier = [n for n in frames if n < current]
+        target = (
+            (later[0] if later else None)
+            if step > 0
+            else (earlier[-1] if earlier else None)
+        )
+    else:
+        target = store.nearest_edited(current, step)
+    if target is None:
+        return False
+    main_window.videoSeekSlider.setValue(target)
+    return True
+
+
+_REVIEW_ATTR = "_alignment_review_frames"
+
+
+def find_frames_to_check(main_window: "MainWindow") -> list[int]:
+    """Marks frames where a face's landmarks jump or a face briefly vanishes."""
+    store = main_window.alignments
+    frames = store.frames_to_check()
+    setattr(main_window, _REVIEW_ATTR, (store.media_path, frames))
+    slider = getattr(main_window, "videoSeekSlider", None)
+    if isinstance(slider, QtWidgets.QWidget):
+        slider.update()
+    QtWidgets.QMessageBox.information(
+        main_window,
+        "Find Frames to Check",
+        (
+            f"Found {len(frames)} frame(s) to check, marked in pink on the seek bar. "
+            "Press Shift+N / Shift+P to step through them."
+        )
+        if frames
+        else "No frames to check: no sudden landmark jumps or briefly missing faces.",
+    )
+    return frames
+
+
+def review_frames(main_window: "MainWindow") -> list[int]:
+    """Frames found by find_frames_to_check, if they belong to the loaded video."""
+    found = getattr(main_window, _REVIEW_ATTR, None)
+    store = getattr(main_window, "alignments", None)
+    if not found or store is None or found[0] != store.media_path:
+        return []
+    return list(found[1])
 
 
 def _target_label(target: Any, number: Any) -> str:

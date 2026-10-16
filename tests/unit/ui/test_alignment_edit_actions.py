@@ -359,3 +359,39 @@ def test_pasted_face_keeps_assignment(main_window):
     store.put(3, [_face(12, 12, 32, 32)], 100, 100, "sig")
     assert aea.paste_from_frame(main_window, 1, 0, 3, 0)
     assert store.get(3, 1, 1, None)[0]["assigned_face_id"] == "target-1"
+
+
+def _kps_face(x: float, face_id: str = "A") -> dict:
+    return {
+        "bbox": np.array([x, 0.1, x + 0.2, 0.3], np.float32),
+        "kps_5": np.full((5, 2), x + 0.1, np.float32),
+        "face_id": face_id,
+    }
+
+
+def test_fill_between_edits_and_jump_keys(main_window):
+    store = main_window.alignments
+    frame = {"n": 0}
+    main_window.videoSeekSlider = SimpleNamespace(
+        value=lambda: frame["n"], setValue=lambda n: frame.__setitem__("n", n)
+    )
+    main_window.video_processor.file_type = "video"
+    store.add_face(0, _kps_face(0.0), 1, 1)
+    store.add_face(4, _kps_face(0.4), 1, 1)
+    store.put(2, [_kps_face(0.9)], 1, 1, "sig")
+
+    assert aea.jump_to_edited(main_window, 1) and frame["n"] == 4
+    assert aea.jump_to_edited(main_window, -1) and frame["n"] == 0
+    assert not aea.jump_to_edited(main_window, -1)
+
+    assert aea.fill_between_edits(main_window, 4, 0) == 3
+    for n, x in ((1, 0.1), (2, 0.2), (3, 0.3)):
+        faces = store.get(n, 1, 1, None)
+        assert len(faces) == 1 and faces[0]["source"] == SOURCE_MANUAL
+        np.testing.assert_allclose(faces[0]["bbox"][0], x, atol=1e-6)
+    assert store.edited_frames() == [0, 1, 2, 3, 4]
+
+    store.undo()
+    assert 1 not in store and 3 not in store
+    np.testing.assert_allclose(store.get(2, 1, 1, None)[0]["bbox"][0], 0.9, atol=1e-6)
+    assert aea.fill_between_edits(main_window, 0, 0) == 0

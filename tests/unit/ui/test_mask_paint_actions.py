@@ -257,3 +257,40 @@ def test_undo_redo_strokes_and_resets(main_window, monkeypatch):
     assert store.effective_mask(2, 0) is not None
     assert aea.undo_edit(main_window)
     assert not aea.undo_edit(main_window)
+
+
+def test_this_frame_only_keeps_the_next_frame(main_window):
+    store = main_window.alignments
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    first = store.effective_mask(0, 0).copy()
+    mpa.brush_settings(main_window)["frame_only"] = True
+    mpa.apply_stroke(main_window, 1, 0, [NOSE], W, H, erase=True)
+    assert not np.array_equal(store.effective_mask(1, 0), first)
+    assert np.array_equal(store.effective_mask(2, 0), first)
+
+    store.undo()
+    assert store.get(2, 1, 1, None)[0]["mask"] is None
+    assert np.array_equal(store.effective_mask(1, 0), first)
+
+
+def test_apply_mask_to_range(main_window):
+    store = main_window.alignments
+    for n in (3, 4):
+        store.put(
+            n,
+            [{"bbox": [0.1, 0.05, 0.6, 0.6], "kps_5": KPS / W, "face_id": "A"}],
+            1,
+            1,
+            "sig",
+        )
+    mpa.apply_stroke(main_window, 2, 0, [NOSE], W, H, erase=False)
+    painted = store.effective_mask(2, 0).copy()
+
+    assert mpa.apply_mask_to_range(main_window, 0, 0, 1, 2)
+    assert store.effective_mask(1, 0) is None and store.effective_mask(2, 0) is None
+    assert np.array_equal(store.effective_mask(3, 0), painted)
+    assert np.array_equal(store.effective_mask(4, 0), painted)
+
+    store.undo()
+    assert np.array_equal(store.effective_mask(2, 0), painted)
+    assert store.get(3, 1, 1, None)[0]["mask"] is None

@@ -1181,6 +1181,16 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
                 video_control_actions.move_slider_to_nearest_marker(self, "next")
             case QtCore.Qt.Key_Q:
                 video_control_actions.move_slider_to_nearest_marker(self, "previous")
+            case QtCore.Qt.Key_N | QtCore.Qt.Key_P:
+                from app.ui.widgets.actions import alignment_edit_actions
+
+                alignment_edit_actions.jump_to_edited(
+                    self,
+                    1 if event.key() == QtCore.Qt.Key_N else -1,
+                    check=bool(
+                        event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier
+                    ),
+                )
             case QtCore.Qt.Key_S:
                 self.swapfacesButton.click()
 
@@ -1197,6 +1207,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             save_load_actions.save_current_workspace(
                 self, str(self.last_workspace_path)
             )
+            from app.ui.widgets.actions import alignment_autosave
+
+            alignment_autosave.on_close(self)
         self.video_processor.join_and_clear_threads()
         # Optionally handle the event if needed
         event.accept()

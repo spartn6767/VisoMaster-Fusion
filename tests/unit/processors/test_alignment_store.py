@@ -448,3 +448,58 @@ def test_history_cleared_by_clear_media_switch_and_load(tmp_path):
         store.remove_frame(0)
     store.load(path)
     assert not store.can_undo() and 0 in store
+
+
+def _id_face(x: float, face_id: str = "A") -> dict:
+    kps = np.array([[0.05, 0.05], [0.15, 0.05], [0.1, 0.1], [0.06, 0.15], [0.14, 0.15]])
+    return {
+        "bbox": [x, 0.1, x + 0.2, 0.3],
+        "kps_5": kps + [x, 0.1],
+        "face_id": face_id,
+    }
+
+
+def test_edited_frames_and_nearest_edited():
+    store = _edit_store()
+    assert store.edited_frames() == []
+    store.update_face(1, 0, W, H, source=SOURCE_MANUAL)
+    assert store.edited_frames() == [1]
+    assert store.nearest_edited(0, 1) == 1 and store.nearest_edited(1, 1) is None
+    assert store.nearest_edited(2, -1) == 1
+
+
+def test_frames_to_check_flags_jumps_and_brief_dropouts():
+    store = AlignmentStore()
+    for n, x in enumerate([0.1, 0.1, 0.5, 0.5]):
+        store.put(n, [_id_face(x)], 1, 1, "s")
+    store.put(4, [], 1, 1, "s")
+    store.put(5, [_id_face(0.5)], 1, 1, "s")
+    store.put(6, [_id_face(0.52, face_id=None)], 1, 1, "s")
+    assert store.frames_to_check() == [2, 4]
+
+
+def test_autosave_style_save_keeps_store_unsaved(tmp_path):
+    store = _edit_store()
+    store.save(str(tmp_path / "auto.npz"), mark_saved=False)
+    assert store.has_unsaved_changes()
+    restored = AlignmentStore()
+    restored.load(str(tmp_path / "auto.npz"), mark_saved=False)
+    assert restored.frames() == [0, 1, 2] and restored.has_unsaved_changes()
+
+
+def test_reloading_unchanged_saved_file_brings_history_back(tmp_path):
+    store = _edit_store()
+    path = str(tmp_path / "w.alignments.npz")
+    with store.edit([0]):
+        store.remove_frame(0)
+    store.save(path)
+    with store.edit([1]):
+        store.remove_frame(1)
+    store.load(path)
+    assert store.frames() == [1, 2] and store.can_undo() and not store.can_redo()
+    store.undo()
+    assert store.frames() == [0, 1, 2]
+
+    os.utime(path, (1, 1))
+    store.load(path)
+    assert not store.can_undo()

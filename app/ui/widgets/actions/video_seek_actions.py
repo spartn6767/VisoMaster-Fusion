@@ -345,6 +345,31 @@ class TimelineSeekSlider(QtWidgets.QSlider):
                     groove_rect.bottom(),
                 )
 
+        # 4b. Manually edited frames (below the groove) and frames to check (above)
+        from app.ui.widgets.actions import alignment_edit_actions
+
+        store = getattr(self.main_window, "alignments", None)
+        for frames, color, top, bottom in (
+            (
+                store.edited_frames() if store is not None else [],
+                "#26c6da",
+                groove_y + 3,
+                groove_rect.bottom(),
+            ),
+            (
+                alignment_edit_actions.review_frames(self.main_window),
+                "#ff4fd8",
+                groove_rect.top(),
+                groove_y - 3,
+            ),
+        ):
+            if not frames:
+                continue
+            painter.setPen(QtGui.QPen(QtGui.QColor(color), 2))
+            for value in frames:
+                marker_x = int(marker_x_for_value(value))
+                painter.drawLine(marker_x, top, marker_x, bottom)
+
         # 5. Playhead Handle
         handle_color = (
             QtGui.QColor("#e5c07b")
