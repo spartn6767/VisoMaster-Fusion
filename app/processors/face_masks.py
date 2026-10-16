@@ -183,14 +183,6 @@ class FaceMasks:
             if is_lazy_build:
                 self.models_processor.hide_build_dialog.emit()
 
-        if not getattr(self, "_segmenter_diag_done", False):
-            self._segmenter_diag_done = True
-            print(
-                f"[INFO] Hair Segmenter model: providers={ort_session.get_providers()} "
-                f"input={tuple(x.shape)} {x.device} range=({float(x.min()):.2f}, "
-                f"{float(x.max()):.2f}) logits=({float(out.min()):.2f}, "
-                f"{float(out.max()):.2f}) nan={bool(torch.isnan(out).any())}"
-            )
         return out.permute(0, 3, 1, 2)
 
     # --- Mouth Processing Logic ---
