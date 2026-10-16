@@ -286,7 +286,7 @@ def test_apply_mask_to_range(main_window):
     mpa.apply_stroke(main_window, 2, 0, [NOSE], W, H, erase=False)
     painted = store.effective_mask(2, 0).copy()
 
-    assert mpa.apply_mask_to_range(main_window, 0, 0, 1, 2)
+    assert mpa.apply_mask_to_range(main_window, 0, 0, 1, 2) == 2
     assert store.effective_mask(1, 0) is None and store.effective_mask(2, 0) is None
     assert np.array_equal(store.effective_mask(3, 0), painted)
     assert np.array_equal(store.effective_mask(4, 0), painted)
@@ -294,3 +294,19 @@ def test_apply_mask_to_range(main_window):
     store.undo()
     assert np.array_equal(store.effective_mask(2, 0), painted)
     assert store.get(3, 1, 1, None)[0]["mask"] is None
+
+
+def test_range_action_reports_result(main_window, monkeypatch):
+    from app.ui.widgets.actions import common_actions
+
+    toasts = []
+    monkeypatch.setattr(
+        common_actions,
+        "create_and_show_toast_message",
+        lambda mw, title, text: toasts.append(text),
+    )
+    monkeypatch.setattr(mpa, "_ask_range", lambda mw, frame: (0, 2))
+    monkeypatch.setattr(mpa, "refresh_mask_overlay", lambda mw: None)
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 0)
+    assert mpa.toolbar_action(main_window, "range") == 3
+    assert toasts == ["Mask applied to frames 0\u20132 (3 frames with this face)."]

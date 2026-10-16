@@ -164,6 +164,7 @@ def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
         frames = _ask_range(main_window, frame_number)
         if frames is not None:
             result = apply_mask_to_range(main_window, frame_number, face_index, *frames)
+            _show_range_result(main_window, *frames, result)
     elif key in ("previous", "next"):
         source = _adjacent_source(
             main_window, frame_number, face_index, -1 if key == "previous" else 1
@@ -464,17 +465,19 @@ def apply_mask_to_range(
     face_index: int,
     start: int,
     end: int,
-) -> bool:
+) -> int:
     """Gives the same person the selected face's mask on every stored frame from
-    start to end; frames after end keep the mask they showed before."""
+    start to end; frames after end keep the mask they showed before. Returns how
+    many frames got it."""
     face_id = _face_id(main_window, frame_number, face_index)
     if face_id is None or end < start:
-        return False
+        return 0
     store = main_window.alignments
     mask = store.effective_mask(frame_number, face_index)
     mask = manual_masks.empty_mask() if mask is None else mask.copy()
     frames = [n for n in store.frames() if start <= n <= end]
     keyframe_set = False
+    applied = 0
     with store.edit([*frames, end + 1]):
         _keep_frame_mask(main_window, face_id, end + 1)
         for n in frames:
@@ -491,11 +494,30 @@ def apply_mask_to_range(
                     source=SOURCE_MANUAL,
                 )
                 keyframe_set = True
+                applied += 1
+                break
     if not keyframe_set:
-        return False
+        return 0
     aea._refresh(main_window)
     refresh_mask_overlay(main_window)
-    return True
+    return applied
+
+
+def _show_range_result(main_window: "MainWindow", start: int, end: int, applied: int):
+    from app.ui.widgets.actions import common_actions
+
+    if applied:
+        common_actions.create_and_show_toast_message(
+            main_window,
+            "Mask Applied",
+            f"Mask applied to frames {start}\u2013{end} ({applied} frames with this face).",
+        )
+    else:
+        QtWidgets.QMessageBox.information(
+            main_window,
+            "Apply Mask to Range",
+            f"No stored frames with this face between {start} and {end}.",
+        )
 
 
 def _ask_range(
