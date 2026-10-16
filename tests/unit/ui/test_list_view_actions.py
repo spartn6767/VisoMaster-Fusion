@@ -417,3 +417,42 @@ def test_clear_all_embeddings_blocked_leaves_state_unchanged(monkeypatch):
 
     assert list_view_actions.clear_all_embeddings(main_window) is False
     assert list(main_window.merged_embeddings) == ["embed_1"]
+
+
+def test_shortcuts_markdown_reads_wiki_page_without_comments(tmp_path):
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    markdown = list_view_actions.shortcuts_markdown(repo_root)
+    assert markdown is not None
+    assert "| Space | Play / Stop |" in markdown
+    assert "<!--" not in markdown and "keyPressEvent" not in markdown
+    assert list_view_actions.shortcuts_markdown(tmp_path) is None
+
+
+def test_show_shortcuts_shows_wiki_page_in_dialog(monkeypatch):
+    from pathlib import Path
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    shown = []
+
+    def fake_exec(dialog):
+        browser = dialog.findChild(QtWidgets.QTextBrowser)
+        shown.append((dialog.windowTitle(), browser.toPlainText()))
+        return 0
+
+    monkeypatch.setattr(QtWidgets.QDialog, "exec", fake_exec)
+    main_window = QtWidgets.QWidget()
+    main_window.project_root_path = str(Path(__file__).resolve().parents[3])
+    list_view_actions.show_shortcuts(main_window)
+    assert shown and shown[0][0] == "Keyboard Shortcuts"
+    assert "Face Compare" in shown[0][1]
+
+
+def test_show_shortcuts_falls_back_without_wiki_page(tmp_path):
+    signal = _DummySignal()
+    main_window = SimpleNamespace(
+        project_root_path=str(tmp_path), display_messagebox_signal=signal
+    )
+    list_view_actions.show_shortcuts(main_window)
+    assert signal.calls and signal.calls[0][0] == "Shortcuts"

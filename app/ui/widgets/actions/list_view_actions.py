@@ -1,7 +1,8 @@
 from collections import deque
 from functools import partial
-from typing import TYPE_CHECKING, Dict, Type
+from typing import TYPE_CHECKING, Dict, Optional, Type
 from pathlib import Path
+import re
 import sys
 import os
 import subprocess
@@ -1021,7 +1022,42 @@ def open_input_faces_folder(main_window: "MainWindow"):
     _open_folder_in_file_manager(main_window, folder_name)
 
 
+SHORTCUTS_DOC = Path("docs") / "wiki" / "keyboard-shortcuts.md"
+
+
+def shortcuts_markdown(project_root) -> Optional[str]:
+    """The wiki shortcuts page without its HTML comments, or None if it's missing."""
+    try:
+        text = (Path(project_root) / SHORTCUTS_DOC).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return re.sub(r"<!--.*?-->\n?", "", text, flags=re.DOTALL)
+
+
 def show_shortcuts(main_window: "MainWindow"):
+    """Shows docs/wiki/keyboard-shortcuts.md, so the page is the single list to update."""
+    markdown = shortcuts_markdown(main_window.project_root_path)
+    if markdown is None:
+        _show_builtin_shortcuts(main_window)
+        return
+    dialog = QtWidgets.QDialog(main_window)
+    dialog.setWindowTitle("Keyboard Shortcuts")
+    dialog.setWindowIcon(QtGui.QIcon(":/media/media/visomaster_small.png"))
+    layout = QtWidgets.QVBoxLayout(dialog)
+    browser = QtWidgets.QTextBrowser(dialog)
+    browser.setOpenExternalLinks(True)
+    browser.setMarkdown(markdown)
+    layout.addWidget(browser)
+    buttons = QtWidgets.QDialogButtonBox(
+        QtWidgets.QDialogButtonBox.StandardButton.Close, dialog
+    )
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    dialog.resize(640, 720)
+    dialog.exec()
+
+
+def _show_builtin_shortcuts(main_window: "MainWindow"):
     # HTML formating
     shortcuts_text = (
         "<b><u>Actions:</u></b><br>"

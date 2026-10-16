@@ -21,7 +21,7 @@ Single-letter shortcuts don't work while a text box (such as search) has focus.
 | Ctrl+0 | Fit to View |
 | Ctrl+1 | 100% zoom |
 
-Defined in `MainWindow.keyPressEvent` (`app/ui/main_ui.py`), except X, Ctrl+0 and Ctrl+1, which are View menu actions in the same file.
+<!-- Defined in `MainWindow.keyPressEvent` (`app/ui/main_ui.py`), except X, Ctrl+0 and Ctrl+1, which are View menu actions in the same file. -->
 
 ## Mouse with keys
 
@@ -47,4 +47,4 @@ Defined in `MainWindow.keyPressEvent` (`app/ui/main_ui.py`), except X, Ctrl+0 an
 
 Not used in the main window: B, E, G, H, I, J, K, L, M, N, O, P, U, Y, the number keys, and most Ctrl/Shift combinations.
 
-When you add or change a shortcut, update this page and the in-app Shortcuts list (`list_view_actions.py`).
+<!-- Help > View Shortcuts shows this page (HTML comments like this one are hidden), so update it whenever a shortcut is added or changed. -->
