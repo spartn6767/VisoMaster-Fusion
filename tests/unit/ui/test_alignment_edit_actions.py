@@ -449,3 +449,39 @@ def test_focus_viewer_targets_the_preview(monkeypatch):
     aea.focus_viewer(SimpleNamespace(graphicsViewFrame=view))
     aea.focus_viewer(SimpleNamespace())
     assert len(focused) == 1
+
+
+def test_repeated_paste_walks_frames_and_restores_original(main_window):
+    store = main_window.alignments
+    for n in range(1, 6):
+        store.put(n, [_face(10 + n, 10, 30 + n, 30)], 100, 100, "sig")
+    frame = {"n": 3}
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: frame["n"])
+    from app.ui.widgets.actions import mask_paint_actions as mpa
+
+    def left():
+        return float(store.get(3, 100, 100, None)[0]["bbox"][0])
+
+    assert mpa.paste_step(main_window, "align", 3, 0, -1)
+    assert left() == pytest.approx(12, abs=1e-3)
+    assert mpa.paste_source_text(main_window, "align", 0) == "From frame 2"
+    assert mpa.paste_step(main_window, "align", 3, 0, -1)
+    assert left() == pytest.approx(11, abs=1e-3)
+    assert not mpa.paste_step(main_window, "align", 3, 0, -1)
+    assert mpa.paste_step(main_window, "align", 3, 0, 1)
+    assert left() == pytest.approx(12, abs=1e-3)
+    assert mpa.paste_step(main_window, "align", 3, 0, 1)
+    assert left() == pytest.approx(13, abs=1e-3)
+    assert store.get(3, 100, 100, None)[0]["source"] != SOURCE_MANUAL
+    assert mpa.paste_source_text(main_window, "align", 0) == ""
+    assert mpa.paste_step(main_window, "align", 3, 0, 1)
+    assert left() == pytest.approx(14, abs=1e-3)
+    assert mpa.paste_step(main_window, "align", 3, 0, 1)
+    assert left() == pytest.approx(15, abs=1e-3)
+
+    assert store.undo() is not None and not store.can_undo()
+    assert left() == pytest.approx(13, abs=1e-3)
+    assert store.get(3, 100, 100, None)[0]["source"] != SOURCE_MANUAL
+
+    frame["n"] = 4
+    assert mpa.paste_source_text(main_window, "align", 0) == ""

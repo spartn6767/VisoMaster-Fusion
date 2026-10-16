@@ -13,7 +13,7 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.processors.video_utils import manual_masks
-from app.processors.video_utils.alignment_store import SOURCE_MANUAL
+from app.processors.video_utils.alignment_store import SOURCE_MANUAL, _nearest
 from app.ui.widgets.actions import alignment_edit_actions as aea
 
 if TYPE_CHECKING:
@@ -25,6 +25,8 @@ _BRUSH_BAR_ATTR = "_mask_brush_bar"
 _CLIPBOARD_ATTR = "mask_clipboard"
 _ACTIVE_FACE_ATTR = "_mask_active_face"
 _BAR_BUTTONS_ATTR = "_mask_bar_buttons"
+_PASTE_LABEL_ATTR = "_mask_paste_label"
+_PASTE_RUN_ATTR = "_paste_run"
 _CURSOR_ATTR = "_mask_brush_cursor"
 _ADD_RGB = (0, 220, 120)
 _ERASE_RGB = (255, 60, 60)
@@ -101,9 +103,15 @@ BAR_ACTIONS = (
     (
         "previous",
         "< Paste",
-        "Paste the mask from the nearest earlier stored frame (Z).",
+        "Paste the mask from the nearest earlier stored frame (Z). "
+        "Press again for the next earlier one.",
     ),
-    ("next", "Paste >", "Paste the mask from the nearest later stored frame (X)."),
+    (
+        "next",
+        "Paste >",
+        "Paste the mask from the nearest later stored frame (X). "
+        "Press again for the next later one.",
+    ),
     ("reset_frame", "Reset Frame", "Computed mask on this frame only (M)."),
     ("reset_on", "Reset From Here", "Computed mask from this frame on."),
     ("reset_all", "Reset All", "Remove every painted mask in this video."),
@@ -143,6 +151,131 @@ def _adjacent_source(
     return None if other_index is None else (other, other_index)
 
 
+def _source_face(
+    main_window: "MainWindow", frame_number: int, center: tuple[float, float]
+) -> Optional[int]:
+    return aea.nearest_face_index(aea._frame_faces(main_window, frame_number), *center)
+
+
+def _same_mask(a: Optional[np.ndarray], b: Optional[np.ndarray]) -> bool:
+    if a is None or b is None:
+        return a is None and b is None
+    return bool(np.array_equal(a, b))
+
+
+def _paste_run(
+    main_window: "MainWindow", mode: str, frame_number: int, face_index: int
+) -> Optional[dict]:
+    """The < Paste / Paste > run still open on this frame and face, if nothing
+    else changed since its last paste."""
+    run = getattr(main_window, _PASTE_RUN_ATTR, None)
+    if (
+        run is not None
+        and run["mode"] == mode
+        and run["frame"] == frame_number
+        and run["face"] == face_index
+        and run["revision"] == main_window.alignments.revision
+    ):
+        return run
+    return None
+
+
+def paste_step(
+    main_window: "MainWindow", mode: str, frame_number: int, face_index: int, step: int
+) -> bool:
+    """< Paste (step -1) / Paste > (step 1) for mode "align" or "mask".
+
+    Repeated presses walk one row of stored frames, replacing the previous paste:
+    Z goes one frame earlier, X one later, and reaching this frame puts the
+    original back. The whole run is one undo step. In mask mode, frames whose mask
+    matches the one shown are skipped."""
+    store = main_window.alignments
+    faces = aea._frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return False
+    run = _paste_run(main_window, mode, frame_number, face_index)
+    if run is None:
+        x1, y1, x2, y2 = faces[face_index]["bbox"]
+        run = {
+            "mode": mode,
+            "frame": frame_number,
+            "face": face_index,
+            "center": ((x1 + x2) / 2.0, (y1 + y2) / 2.0),
+            "source": frame_number,
+            "pasted": False,
+        }
+    frames = store.face_frames()
+    target = _nearest(frames, run["source"], step)
+    if mode == "mask":
+        shown = store.effective_mask(frame_number, face_index)
+
+        def source_mask(n: int) -> Optional[np.ndarray]:
+            index = _source_face(main_window, n, run["center"])
+            return None if index is None else store.effective_mask(n, index)
+
+        while (
+            target is not None
+            and target != frame_number
+            and _same_mask(source_mask(target), shown)
+        ):
+            target = _nearest(frames, target, step)
+    if target is None:
+        return False
+    source_index = None
+    if target != frame_number:
+        source_index = _source_face(main_window, target, run["center"])
+        if source_index is None:
+            return False
+    if run["pasted"]:
+        store.undo()
+    before = store.revision
+    if source_index is None:
+        aea._refresh(main_window)
+        if mode == "mask":
+            refresh_mask_overlay(main_window)
+    elif mode == "mask":
+        paste_mask_from_frame(
+            main_window, target, source_index, frame_number, face_index
+        )
+    else:
+        aea.paste_from_frame(
+            main_window, target, source_index, frame_number, face_index
+        )
+    run.update(
+        source=target,
+        pasted=source_index is not None and store.revision != before,
+        revision=store.revision,
+    )
+    setattr(main_window, _PASTE_RUN_ATTR, run)
+    return True
+
+
+def paste_source_text(
+    main_window: "MainWindow", mode: str, face_index: Optional[int]
+) -> str:
+    """ "From frame N" while the shown face holds a < Paste / Paste > result."""
+    frame_number = aea.current_frame_number(main_window)
+    run = getattr(main_window, _PASTE_RUN_ATTR, None)
+    if run is not None and run["frame"] != frame_number:
+        setattr(main_window, _PASTE_RUN_ATTR, None)
+        return ""
+    if face_index is None:
+        return ""
+    run = _paste_run(main_window, mode, frame_number, face_index)
+    if run is None or run["source"] == frame_number:
+        return ""
+    return f"From frame {run['source']}"
+
+
+def paste_source_label(parent: QtWidgets.QWidget) -> QtWidgets.QLabel:
+    label = QtWidgets.QLabel(parent)
+    label.setToolTip(
+        "Frame the current < Paste / Paste > came from. Press Z / X again to try "
+        "the next one; reaching this frame puts the original back."
+    )
+    return label
+
+
 def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
     """Runs a brush-bar action on the selected face of the shown frame."""
     if key == "reset_all":
@@ -168,13 +301,13 @@ def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
             result = apply_mask_to_range(main_window, frame_number, face_index, *frames)
             _show_range_result(main_window, *frames, result)
     elif key in ("previous", "next"):
-        source = _adjacent_source(
-            main_window, frame_number, face_index, -1 if key == "previous" else 1
+        result = paste_step(
+            main_window,
+            "mask",
+            frame_number,
+            face_index,
+            -1 if key == "previous" else 1,
         )
-        if source is not None:
-            result = paste_mask_from_frame(
-                main_window, *source, frame_number, face_index
-            )
     _sync_bar_buttons(main_window)
     return result
 
@@ -205,6 +338,9 @@ def _sync_bar_buttons(main_window: "MainWindow") -> None:
         )
     for key, button in buttons.items():
         button.setEnabled(bool(enabled.get(key, False)))
+    label = getattr(main_window, _PASTE_LABEL_ATTR, None)
+    if label is not None:
+        label.setText(paste_source_text(main_window, "mask", face_index))
 
 
 def default_bar_position(bar: QtWidgets.QWidget) -> tuple[int, int]:
@@ -339,6 +475,10 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
         button.clicked.connect(partial(toolbar_action, main_window, key))
         actions_row.addWidget(button)
         bar_buttons[key] = button
+        if key == "next":
+            label = paste_source_label(bar)
+            actions_row.addWidget(label)
+            setattr(main_window, _PASTE_LABEL_ATTR, label)
     setattr(main_window, _BAR_BUTTONS_ATTR, bar_buttons)
 
     bar.adjustSize()

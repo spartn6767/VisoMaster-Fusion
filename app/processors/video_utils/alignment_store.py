@@ -352,11 +352,20 @@ class AlignmentStore:
         with self._lock:
             return sum(len(f.faces) for f in self._frames.values())
 
+    @property
+    def revision(self) -> int:
+        """Bumped by every change; equal values mean nothing changed in between."""
+        with self._lock:
+            return self._revision
+
+    def face_frames(self) -> list[int]:
+        """Frames with stored faces, sorted."""
+        with self._lock:
+            return sorted(n for n, f in self._frames.items() if f.faces)
+
     def nearest_frame(self, frame_number: int, step: int) -> Optional[int]:
         """Closest frame with stored faces before (step < 0) or after (step > 0)."""
-        with self._lock:
-            frames = sorted(n for n, f in self._frames.items() if f.faces)
-        return _nearest(frames, frame_number, step)
+        return _nearest(self.face_frames(), frame_number, step)
 
     def edited_frames(self) -> list[int]:
         """Frames holding manual edits (alignments or painted masks), sorted."""

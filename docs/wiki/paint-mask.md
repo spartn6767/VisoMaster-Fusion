@@ -45,7 +45,7 @@ The buttons act on the selected face: the face you last painted or right-clicked
 | Undo / Redo | Steps back / forward through your mask and alignment edits (Ctrl+Z / Ctrl+Shift+Z). | Later frames go back to what they carried before / after the step |
 | Copy | Copies the selected face's mask (its own or the carried one). | None |
 | Paste | Pastes the copied mask onto the selected face as a keyframe. | Carries forward like a painted mask |
-| < Paste / Paste > | Copies the mask from the nearest earlier / later frame with stored alignments onto this frame as a keyframe. | Carries forward like a painted mask |
+| < Paste / Paste > | Copies the mask from the nearest earlier / later frame with stored alignments onto this frame as a keyframe. Press again to try the next frame (see below). | Carries forward like a painted mask |
 | Reset Frame | Uses the computed mask on this frame only. | None: later frames keep the mask they had |
 | Reset From Here | Stores an empty keyframe, so this frame uses the computed mask. | Later frames use the computed mask too, up to the next painted keyframe |
 | Apply to Range... | Asks for a From and To frame (default: this frame up to the next marker) and gives the same person this face's mask on every stored frame in between. Painted keyframes inside the range are replaced. | Frames after the range keep the mask they showed before |
@@ -58,6 +58,8 @@ While Paint Mask is on, a circle follows the pointer over the frame. The solid c
 ## Moving between frames
 
 While this mode is on, **K** / **L** step back / forward by the frame-step value (default 1), as they do outside the mode. (C and V do Copy and Paste here.)
+
+**Trying several frames with < Paste / Paste >:** if the pasted mask doesn't look right, press **Z** (or < Paste) again: the paste is replaced by the mask from the next earlier frame. **X** (Paste >) moves the other way, through this frame (which puts your original mask back) and on to later frames. Frames whose mask is the same as the one shown are skipped, so each press shows a different mask. The bar shows "From frame N" while a pasted mask is shown. The whole run is one undo step, so Ctrl+Z gives you back the mask you had before the first press. Changing frame, selecting another face or making any other edit ends the run.
 
 **Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Reset Frame. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
 

@@ -170,7 +170,9 @@ def test_brush_bar_drags_within_viewer():
     handle = bar.findChild(mpa._DragHandle)
     rows = bar.layout()
     assert isinstance(rows, QtWidgets.QVBoxLayout) and rows.count() == 2
-    assert rows.itemAt(1).layout().count() == len(mpa.BAR_ACTIONS)
+    assert (
+        rows.itemAt(1).layout().count() == len(mpa.BAR_ACTIONS) + 1
+    )  # + "From frame" label
     assert handle is not None and bar.pos() == QtCore.QPoint(
         *mpa.default_bar_position(bar)
     )
@@ -345,3 +347,56 @@ def test_floating_bar_defaults_to_bottom_right():
     bar.resize(200, 50)
     assert mpa.default_bar_position(bar) == (592, 542)
     assert mpa.default_bar_position(QtWidgets.QFrame()) == (8, 8)
+
+
+def test_repeated_paste_walks_frames_skipping_same_masks(main_window):
+    store = main_window.alignments
+    for n in (3, 4):
+        store.put(
+            n,
+            [{"bbox": [0.1, 0.05, 0.6, 0.6], "kps_5": KPS / W, "face_id": "A"}],
+            1,
+            1,
+            "sig",
+        )
+    for n, point in enumerate((NOSE, tuple(KPS[0]), tuple(KPS[3]))):
+        mpa.apply_stroke(main_window, n, 0, [point], W, H, erase=False)
+    masks = [store.effective_mask(n, 0).copy() for n in range(3)]
+    store.clear_history()
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 4)
+
+    def shown():
+        return store.effective_mask(4, 0)
+
+    # 3 and 2 show the same mask as frame 4 (held from 2), so they're skipped.
+    assert mpa.toolbar_action(main_window, "previous")
+    assert np.array_equal(shown(), masks[1])
+    assert mpa.paste_source_text(main_window, "mask", 0) == "From frame 1"
+    assert mpa.toolbar_action(main_window, "previous")
+    assert np.array_equal(shown(), masks[0])
+    assert not mpa.toolbar_action(main_window, "previous")
+    assert mpa.toolbar_action(main_window, "next")
+    assert np.array_equal(shown(), masks[1])
+    assert mpa.toolbar_action(main_window, "next")
+    assert np.array_equal(shown(), masks[2])
+    assert store.get(4, 1, 1, None)[0]["source"] == SOURCE_MANUAL
+    # Frame 3 matches the shown mask; next is frame 4 itself: the original.
+    assert mpa.toolbar_action(main_window, "next")
+    assert store.get(4, 1, 1, None)[0]["source"] != SOURCE_MANUAL
+    assert mpa.paste_source_text(main_window, "mask", 0) == ""
+    assert not store.can_undo()
+
+    assert mpa.toolbar_action(main_window, "previous")
+    assert mpa.toolbar_action(main_window, "previous")
+    assert store.undo() is not None and not store.can_undo()
+    assert store.get(4, 1, 1, None)[0]["source"] != SOURCE_MANUAL
+
+
+def test_paste_run_ends_after_another_edit(main_window):
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 2)
+    assert mpa.toolbar_action(main_window, "reset_frame")
+    assert mpa.toolbar_action(main_window, "previous")
+    assert mpa.paste_source_text(main_window, "mask", 0) == "From frame 1"
+    mpa.apply_stroke(main_window, 2, 0, [tuple(KPS[0])], W, H, erase=False)
+    assert mpa.paste_source_text(main_window, "mask", 0) == ""

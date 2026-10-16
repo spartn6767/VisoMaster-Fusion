@@ -24,7 +24,7 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 | Reset All Alignments | Discards every stored alignment in the video (asks first). |
 | Copy | Copies the selected face. |
 | Paste | Pastes the copied face, replacing the selected face. |
-| < Paste / Paste > | Pastes the face from the nearest earlier / later frame with stored alignments. |
+| < Paste / Paste > | Pastes the face from the nearest earlier / later frame with stored alignments. Press again to try the next frame (see below). |
 | Assign to Target | Pins the selected face to a target face, skipping the usual look-alike matching for it on this frame. |
 | Add as Target | Creates a target face from the selected face. |
 | Delete Face | Deletes the selected face from this frame. |
@@ -38,6 +38,8 @@ With **Settings > Detectors > Autosave Alignments** on (the default), unsaved al
 ## Moving between frames
 
 While this mode is on, **K** / **L** step back / forward by the frame-step value (default 1), as they do outside the mode. (C and V do Copy and Paste here.)
+
+**Trying several frames with < Paste / Paste >:** if the pasted face doesn't fit, press **Z** (or < Paste) again: the paste is replaced by the face from the next earlier frame. **X** (Paste >) moves the other way, one frame at a time, through this frame (which puts your original face back) and on to later frames. For example, on frame 120: Z, Z, Z pastes from 119, 118, 117; X then goes back to 118. The bar shows "From frame N" next to the buttons while a pasted face is shown. The whole run is one undo step, so Ctrl+Z gives you back the face you had before the first press. Changing frame, selecting another face or making any other edit ends the run; the next Z / X starts from the nearest frame again.
 
 **Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Delete Face. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
 

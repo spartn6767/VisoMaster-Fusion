@@ -147,6 +147,7 @@ def sync_edit_toolbar(main_window: "MainWindow") -> None:
 _ALIGN_BAR_ATTR = "_alignment_bar"
 _ALIGN_BAR_BUTTONS_ATTR = "_alignment_bar_buttons"
 _ALIGN_BAR_POS_ATTR = "alignment_bar_pos"
+_ALIGN_PASTE_LABEL_ATTR = "_alignment_paste_label"
 ALIGNMENT_FRAME_ACTIONS = (
     ("undo", "Undo", "Undo the last alignment or mask edit (Ctrl+Z)."),
     ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
@@ -165,9 +166,15 @@ ALIGNMENT_FACE_ACTIONS = (
     (
         "previous",
         "< Paste",
-        "Paste the face from the nearest earlier stored frame (Z).",
+        "Paste the face from the nearest earlier stored frame (Z). "
+        "Press again for the next earlier one.",
     ),
-    ("next", "Paste >", "Paste the face from the nearest later stored frame (X)."),
+    (
+        "next",
+        "Paste >",
+        "Paste the face from the nearest later stored frame (X). "
+        "Press again for the next later one.",
+    ),
     ("assign", "Assign to Target", "Pin the selected face to a target face."),
     ("add_target", "Add as Target", "Create a target face from the selected face."),
     ("delete", "Delete Face", "Delete the selected face (M)."),
@@ -209,13 +216,13 @@ def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
         if key == "copy":
             result = aea.copy_face(main_window, frame_number, face_index)
         elif key in ("previous", "next"):
-            source = mpa._adjacent_source(
-                main_window, frame_number, face_index, -1 if key == "previous" else 1
+            result = mpa.paste_step(
+                main_window,
+                "align",
+                frame_number,
+                face_index,
+                -1 if key == "previous" else 1,
             )
-            if source is not None:
-                result = aea.paste_from_frame(
-                    main_window, *source, frame_number, face_index
-                )
         elif key == "add_target":
             result = aea.add_as_target_face(main_window, frame_number, face_index)
         elif key == "delete":
@@ -299,6 +306,10 @@ def _build_alignment_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
                 )
             row.addWidget(button)
             buttons[key] = button
+            if key == "next":
+                label = mpa.paste_source_label(bar)
+                row.addWidget(label)
+                setattr(main_window, _ALIGN_PASTE_LABEL_ATTR, label)
     top.addStretch(1)
     top.addWidget(
         mpa.close_bar_button(
@@ -356,3 +367,6 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
         )
     for key, button in getattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, {}).items():
         button.setEnabled(bool(enabled.get(key, False)))
+    label = getattr(main_window, _ALIGN_PASTE_LABEL_ATTR, None)
+    if label is not None:
+        label.setText(mpa.paste_source_text(main_window, "align", face_index))

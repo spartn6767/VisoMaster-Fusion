@@ -34,8 +34,8 @@ While either mode is on, these keys replace their usual action and work on the s
 |---|---|---|
 | C | Copy | Copy |
 | V | Paste | Paste |
-| Z | < Paste (from the earlier frame) | < Paste |
-| X | Paste > (from the later frame) | Paste > |
+| Z | < Paste (from the earlier frame; press again for the next earlier one) | < Paste (same) |
+| X | Paste > (from the later frame; after Z, steps back toward the original) | Paste > (same) |
 | M | Delete Face | Reset Frame |
 | K / L | Back / forward by the frame-step value (as everywhere) | Back / forward by the frame-step value |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo | Undo / redo |
