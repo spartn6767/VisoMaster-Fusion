@@ -777,9 +777,6 @@ class FaceEditors:
                     color,
                     strength=parameters.get("HairMakeupStrengthDecimalSlider", 0.8),
                     lightness=parameters.get("HairMakeupLightnessDecimalSlider", 0.5),
-                    color_match=parameters.get(
-                        "HairMakeupColorMatchDecimalSlider", 0.5
-                    ),
                 )
 
         if parameters.get("EyeBrowsMakeupEnableToggle", False):

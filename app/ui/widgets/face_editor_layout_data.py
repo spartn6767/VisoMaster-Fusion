@@ -404,18 +404,6 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "requiredToggleValue": True,
             "help": "Feathers the hair mask edge, in pixels of the 512px face crop.",
         },
-        "HairMakeupColorMatchDecimalSlider": {
-            "level": 2,
-            "label": "Strand Precision",
-            "min_value": "0.00",
-            "max_value": "1.00",
-            "default": "0.50",
-            "decimals": 2,
-            "step": 0.01,
-            "parentToggle": "HairMakeupEnableToggle",
-            "requiredToggleValue": True,
-            "help": "Leaves pixels inside the hair mask alone when their color doesn't match the hair (background or skin between strands, edges), which removes glow around the hair. 0.00 recolors the whole mask; higher is stricter.",
-        },
         "HairMakeupStabilizeToggle": {
             "level": 2,
             "label": "Stabilize Hair Mask (cache)",

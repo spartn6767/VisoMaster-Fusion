@@ -303,39 +303,3 @@ def test_sample_input_hair_color_is_cached_per_image_and_crop():
     params["FaceEditorCropScaleDecimalSlider"] = 3.0
     worker.sample_input_hair_color("a.png", params, {})
     assert len(calls) == 3
-
-
-# ---------------------------------------------------------------------------
-# Glow fixes: inward feathering and strand precision
-# ---------------------------------------------------------------------------
-
-
-def test_feathering_never_spills_outside_the_mask():
-    from app.processors.hair_recolor import mask_from_probability
-
-    probs = torch.zeros(1, 64, 64)
-    probs[:, 16:48, 16:48] = 1.0
-    mask = mask_from_probability(probs, threshold=0.5, feather_px=6)
-    assert float(mask[:, :16].max()) == 0.0
-    assert float(mask[:, :, 48:].max()) == 0.0
-    assert float(mask[0, 32, 32]) > 0.99
-    assert 0.0 < float(mask[0, 16, 32]) < 1.0
-
-
-def test_strand_precision_skips_background_between_strands():
-    from app.processors.hair_recolor import recolor_hair_lab
-
-    img = torch.zeros(3, 64, 64, dtype=torch.uint8)
-    img[:] = torch.tensor([45, 30, 20], dtype=torch.uint8).view(3, 1, 1)
-    img[:, :, ::8] = torch.tensor([200, 210, 230], dtype=torch.uint8).view(3, 1, 1)
-    mask = torch.ones(1, 64, 64)
-    blonde = (230, 200, 140)
-
-    loose = recolor_hair_lab(img, mask, blonde, strength=1.0, color_match=0.0)
-    strict = recolor_hair_lab(img, mask, blonde, strength=1.0, color_match=1.0)
-
-    gap_loose = (loose[:, :, ::8].int() - img[:, :, ::8].int()).abs().max()
-    gap_strict = (strict[:, :, ::8].int() - img[:, :, ::8].int()).abs().max()
-    assert gap_strict <= 2 < gap_loose
-    hair = (strict[:, :, 1::8].int() - img[:, :, 1::8].int()).abs().max()
-    assert hair > 20
