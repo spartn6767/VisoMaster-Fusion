@@ -404,6 +404,17 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
             "requiredToggleValue": True,
             "help": "Feathers the hair mask edge, in pixels of the 512px face crop.",
         },
+        "HairMakeupStrandRefineSlider": {
+            "level": 2,
+            "label": "Strand Refinement",
+            "min_value": "0",
+            "max_value": "16",
+            "default": "0",
+            "step": 1,
+            "parentToggle": "HairMakeupEnableToggle",
+            "requiredToggleValue": True,
+            "help": "Snaps the parser's rough hair mask onto the real strands using the image's edges (guided filter), so background or skin between and around strands isn't tinted. 0 is off; try 4-8. Higher follows larger structures.",
+        },
         "HairMakeupStabilizeToggle": {
             "level": 2,
             "label": "Stabilize Hair Mask (cache)",

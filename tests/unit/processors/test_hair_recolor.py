@@ -303,3 +303,56 @@ def test_sample_input_hair_color_is_cached_per_image_and_crop():
     params["FaceEditorCropScaleDecimalSlider"] = 3.0
     worker.sample_input_hair_color("a.png", params, {})
     assert len(calls) == 3
+
+
+def test_guided_refine_pulls_spilled_mask_back_to_hair_edge():
+    from app.processors.hair_recolor import guided_refine_mask
+
+    img = torch.full((3, 64, 64), 220, dtype=torch.uint8)  # bright background
+    img[:, 16:48, 16:48] = 30  # dark hair
+    mask = torch.zeros(1, 64, 64)
+    mask[:, 10:54, 10:54] = 1.0  # parser mask spilling 6px onto the background
+    refined = guided_refine_mask(img, mask, radius=6, eps=1e-3)
+    assert refined.shape == (1, 64, 64)
+    spill = refined[0, 24:40, 10:14].mean()
+    hair = refined[0, 24:40, 20:44].mean()
+    assert hair > 0.9
+    assert spill < 0.7
+    assert guided_refine_mask(img, mask, radius=0) is mask
+
+
+def test_compute_input_hair_color_end_to_end(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from app.processors.workers import function_worker as fw_mod
+
+    bgr = np.zeros((300, 300, 3), dtype=np.uint8)
+    bgr[:] = (40, 90, 150)  # BGR -> RGB (150, 90, 40)
+    monkeypatch.setattr(fw_mod.misc_helpers, "read_image_file", lambda p: bgr)
+
+    worker = fw_mod.FunctionWorker.__new__(fw_mod.FunctionWorker)
+    worker.mp = SimpleNamespace(device="cpu")
+    worker._input_hair_colors = {}
+    worker._input_hair_lock = threading.Lock()
+    kps = np.array(
+        [[120, 130], [180, 130], [150, 160], [125, 190], [175, 190]], dtype=np.float32
+    )
+    worker.run_detect = lambda *a, **k: (None, np.array([kps]), None)
+
+    def logits(face):
+        assert face.shape == (3, 512, 512) and face.dtype == torch.uint8
+        out = torch.zeros(1, 19, 512, 512)
+        out[:, 17, :200] = 10.0
+        return out
+
+    worker.get_faceparser_logits = logits
+    params = {
+        "FaceEditorCropScaleDecimalSlider": 2.5,
+        "FaceEditorVYRatioDecimalSlider": -0.125,
+    }
+    color = worker.sample_input_hair_color("in.png", params, {})
+    assert color is not None
+    assert all(abs(c - t) <= 3 for c, t in zip(color, (150, 90, 40)))

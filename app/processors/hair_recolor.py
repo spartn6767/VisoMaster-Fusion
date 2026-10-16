@@ -102,6 +102,43 @@ def feather_mask(mask: torch.Tensor, feather_px: float) -> torch.Tensor:
 
 
 @torch.no_grad()
+def guided_refine_mask(
+    img: torch.Tensor, mask: torch.Tensor, radius: int, eps: float = 1e-3
+) -> torch.Tensor:
+    """Snap a coarse [1,H,W] mask onto image edges with a guided filter.
+
+    Uses the image's grayscale as the guide (He et al.), so the mask follows
+    the brightness edges of real strands and drops the gaps between them.
+    """
+    radius = int(radius)
+    if radius <= 0:
+        return mask
+    guide = img.float().div(255.0)
+    guide = (0.299 * guide[0] + 0.587 * guide[1] + 0.114 * guide[2]).view(
+        1, 1, *guide.shape[-2:]
+    )
+    p = mask.float().to(guide.device).view(1, 1, *mask.shape[-2:])
+    if p.shape[-2:] != guide.shape[-2:]:
+        p = F.interpolate(
+            p, size=guide.shape[-2:], mode="bilinear", align_corners=False
+        )
+
+    def box(x: torch.Tensor) -> torch.Tensor:
+        return F.avg_pool2d(
+            x, 2 * radius + 1, stride=1, padding=radius, count_include_pad=False
+        )
+
+    mean_i = box(guide)
+    mean_p = box(p)
+    var_i = box(guide * guide) - mean_i * mean_i
+    cov_ip = box(guide * p) - mean_i * mean_p
+    a = cov_ip / (var_i + eps)
+    b = mean_p - a * mean_i
+    q = box(a) * guide + box(b)
+    return q.clamp(0.0, 1.0).view(1, *guide.shape[-2:])
+
+
+@torch.no_grad()
 def recolor_hair_lab(
     img: torch.Tensor,
     mask: torch.Tensor,

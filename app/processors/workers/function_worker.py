@@ -604,6 +604,15 @@ class FunctionWorker:
             color = self._compute_input_hair_color(image_path, key[1], key[2], control)
         except Exception as e:
             print(f"[WARN] Sampling input hair color failed for {image_path}: {e}")
+        else:
+            if color is None:
+                print(
+                    f"[WARN] Use Input's Hair Color: no face or not enough hair found in "
+                    f"{image_path}; using the Red/Green/Blue sliders."
+                )
+            else:
+                rgb = tuple(int(round(c)) for c in color)
+                print(f"[INFO] Use Input's Hair Color: {image_path} -> RGB {rgb}")
         with self._input_hair_lock:
             self._input_hair_colors[key] = color
         return color

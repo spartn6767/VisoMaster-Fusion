@@ -14,6 +14,7 @@ from torchvision.transforms import v2
 from app.processors.models_data import models_dir
 from app.processors.utils import faceutil
 from app.processors.hair_recolor import (
+    guided_refine_mask,
     HairMaskCache,
     hair_probability,
     mask_from_probability,
@@ -726,6 +727,9 @@ class FaceEditors:
                 threshold=parameters.get("HairMakeupMaskThresholdDecimalSlider", 0.5),
                 feather_px=parameters.get("HairMakeupEdgeSoftnessSlider", 4),
             )
+            refine_radius = int(parameters.get("HairMakeupStrandRefineSlider", 0))
+            if refine_radius > 0:
+                hair_mask = guided_refine_mask(img, hair_mask, refine_radius)
         if labels is None:
             needs_parser = not hair_on or any(
                 parameters.get(k, False)
