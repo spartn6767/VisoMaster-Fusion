@@ -372,14 +372,14 @@ FACE_EDITOR_LAYOUT_DATA: Any = {  # noqa: F811
         "HairMakeupLightnessDecimalSlider": {
             "level": 2,
             "label": "Lightness",
-            "min_value": "-1.00",
+            "min_value": "0.00",
             "max_value": "1.00",
-            "default": "0.00",
+            "default": "0.50",
             "decimals": 2,
             "step": 0.01,
             "parentToggle": "HairMakeupEnableToggle",
             "requiredToggleValue": True,
-            "help": "Makes the hair brighter (positive) or darker (negative) while keeping strand contrast. 0.00 keeps the original brightness (hue change only). Use a high value to take dark hair blonde.",
+            "help": "Shifts the hair's overall brightness toward the target color's, keeping strand contrast. 0.00 keeps the original brightness (hue change only); 1.00 matches the target (e.g. dark to blonde).",
         },
         "HairMakeupMaskThresholdDecimalSlider": {
             "level": 2,

@@ -273,27 +273,9 @@ class StandardProcessor:
             ):
                 return data
             input_faces = self.worker.main_window.input_faces
-            assigned = getattr(target, "assigned_input_faces", None) or {}
-            target_id = str(getattr(target, "face_id", ""))
-            if not assigned:
-                merged = getattr(target, "assigned_merged_embeddings", None)
-                self.worker.function_worker.note_input_hair_unavailable(
-                    (target_id, "none"),
-                    f"target face {target_id} has "
-                    + (
-                        "only a merged embedding (no image to sample)"
-                        if merged
-                        else "no input face assigned"
-                    ),
-                )
-                return data
-            for input_id in assigned:
+            for input_id in getattr(target, "assigned_input_faces", None) or {}:
                 path = getattr(input_faces.get(input_id), "media_path", None)
                 if not path:
-                    self.worker.function_worker.note_input_hair_unavailable(
-                        (target_id, input_id),
-                        f"input face {input_id} has no source image path",
-                    )
                     continue
                 color = self.worker.function_worker.sample_input_hair_color(
                     str(path), data, control

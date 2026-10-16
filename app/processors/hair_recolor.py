@@ -138,26 +138,23 @@ def guided_refine_mask(
     return q.clamp(0.0, 1.0).view(1, *guide.shape[-2:])
 
 
-LIGHTNESS_RANGE = 50.0  # Lab L units added at Lightness = +/-1
-
-
 @torch.no_grad()
 def recolor_hair_lab(
     img: torch.Tensor,
     mask: torch.Tensor,
     color: Sequence[float],
     strength: float = 1.0,
-    lightness: float = 0.0,
+    lightness: float = 0.5,
 ) -> torch.Tensor:
     """Recolor the masked hair of a [3,H,W] uint8 image in Lab space.
 
     Hue and chroma move to the target color while each pixel keeps its own
     brightness offset from the hair's mean, so strand highlights and shadows
-    survive. ``lightness`` in [-1, 1] makes the hair darker or brighter
-    (0 keeps its own brightness). Returns a [3,H,W] uint8 image.
+    survive. ``lightness`` shifts the hair's mean brightness toward the target
+    color's (0 keeps it, 1 matches it). Returns a [3,H,W] uint8 image.
     """
     strength = float(max(0.0, min(1.0, strength)))
-    lightness = float(max(-1.0, min(1.0, lightness)))
+    lightness = float(max(0.0, min(1.0, lightness)))
     w = mask.float().clamp(0.0, 1.0)
     if w.dim() == 2:
         w = w.unsqueeze(0)
@@ -178,7 +175,7 @@ def recolor_hair_lab(
     target = kc.rgb_to_lab(target_rgb)[0, :, 0, 0]
 
     mean = (lab * w).flatten(1).sum(dim=1) / weight_sum
-    new_l = lab[0:1] + lightness * LIGHTNESS_RANGE
+    new_l = lab[0:1] + lightness * (target[0] - mean[0])
     new_l = new_l.clamp(0.0, 100.0)
     # Darker pixels can't hold the target's full chroma in sRGB; scaling it by
     # relative lightness avoids gamut clipping that would crush the strands.

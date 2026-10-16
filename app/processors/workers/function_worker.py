@@ -73,7 +73,6 @@ class FunctionWorker:
         self.frame_edits = FrameEdits(self.mp, self)
         self._input_hair_colors: Dict[tuple, Optional[Tuple[float, float, float]]] = {}
         self._input_hair_lock = threading.Lock()
-        self._input_hair_notes: set = set()
 
     def _get_session_lock(self, session: Any) -> threading.RLock:
         """Retrieves or creates a dedicated lock for a specific ORT Session."""
@@ -586,16 +585,6 @@ class FunctionWorker:
 
     def get_faceparser_logits(self, img_uint8_3x512x512: torch.Tensor) -> torch.Tensor:
         return self.face_masks._faceparser_logits(img_uint8_3x512x512)
-
-    def note_input_hair_unavailable(self, key: object, message: str) -> None:
-        """Print a Use Input's Hair Color warning once per key."""
-        with self._input_hair_lock:
-            if key in self._input_hair_notes:
-                return
-            self._input_hair_notes.add(key)
-        print(
-            f"[WARN] Use Input's Hair Color: {message}; using the Red/Green/Blue sliders."
-        )
 
     def sample_input_hair_color(
         self, image_path: str, parameters: dict, control: dict

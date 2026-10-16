@@ -356,16 +356,3 @@ def test_compute_input_hair_color_end_to_end(monkeypatch):
     color = worker.sample_input_hair_color("in.png", params, {})
     assert color is not None
     assert all(abs(c - t) <= 3 for c, t in zip(color, (150, 90, 40)))
-
-
-def test_lightness_direction_does_not_depend_on_target_color():
-    img = _striped_dark_hair()
-    full = torch.ones(1, 32, 32)
-
-    def mean_l(out):
-        return kc.rgb_to_lab(out.float().div(255).unsqueeze(0))[0, 0].mean()
-
-    for color in ([20, 20, 120], [230, 200, 140]):  # dark and light targets
-        base = mean_l(recolor_hair_lab(img, full, color, lightness=0.0))
-        assert mean_l(recolor_hair_lab(img, full, color, lightness=0.6)) > base + 10
-        assert mean_l(recolor_hair_lab(img, full, color, lightness=-0.3)) < base - 3
