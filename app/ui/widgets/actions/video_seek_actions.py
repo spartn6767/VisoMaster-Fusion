@@ -354,12 +354,12 @@ class TimelineSeekSlider(QtWidgets.QSlider):
                 store.edited_frames() if store is not None else [],
                 "#26c6da",
                 groove_y + 3,
-                groove_rect.bottom(),
+                self.rect().bottom(),
             ),
             (
                 alignment_edit_actions.review_frames(self.main_window),
                 "#ff4fd8",
-                groove_rect.top(),
+                self.rect().top(),
                 groove_y - 3,
             ),
         ):
