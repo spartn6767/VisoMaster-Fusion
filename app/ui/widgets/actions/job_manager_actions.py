@@ -17,6 +17,7 @@ import traceback  # Import traceback for error logging
 from send2trash import send2trash
 
 from app.ui.widgets.actions import common_actions as common_widget_actions
+from app.ui.widgets.actions import watermark_actions
 from app.ui.widgets.actions import card_actions
 from app.ui.widgets.actions import list_view_actions
 from app.ui.widgets.actions import video_control_actions
@@ -1931,6 +1932,10 @@ def start_job_processor(main_window: "MainWindow", jobs_to_process: list[str] | 
                 )
             except Exception as e:
                 print(f"[WARN] Failed to request queue cancellation: {e}")
+        return
+
+    # Job runs ask about the watermark once, for all their recordings.
+    if not watermark_actions.begin_recording_run(main_window):
         return
 
     # Save the current workspace state before starting the batch

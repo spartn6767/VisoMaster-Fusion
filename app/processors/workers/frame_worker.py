@@ -18,6 +18,7 @@ import numpy as np
 
 from app.processors.utils import faceutil
 from app.processors.utils import platform_support
+from app.helpers import watermark
 
 from app.helpers.miscellaneous import (
     find_best_target_match,
@@ -491,6 +492,22 @@ class FrameWorker(threading.Thread):
                 # wake-up cost is noise against the frame itself.
                 if self.worker_stream:
                     platform_support.blocking_stream_sync(self.worker_stream)
+
+                if watermark.should_draw(
+                    local_control_state,
+                    recording=bool(
+                        self.video_processor.recording
+                        or self.video_processor.is_processing_segments
+                    ),
+                    watermark_recording=getattr(
+                        self.main_window, "recording_watermark", False
+                    )
+                    is True,
+                    single_frame=self.is_single_frame,
+                ):
+                    self.frame = watermark.draw_watermark(
+                        self.frame, watermark.watermark_text(local_control_state)
+                    )
 
             # Check stop event again
             if self.stop_event.is_set():

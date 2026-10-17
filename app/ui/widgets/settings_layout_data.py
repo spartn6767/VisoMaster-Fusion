@@ -203,6 +203,31 @@ SETTINGS_LAYOUT_DATA: Any = {
             "default": True,
             "help": "Show a confirmation prompt before manually stopping a recording.",
         },
+        "RecordingWatermarkAskToggle": {
+            "level": 1,
+            "label": "Ask About Watermark When Recording",
+            "default": True,
+            "help": "Before each recording (or once per Batch Process / Job Manager run), ask whether to burn the watermark text into the video.",
+        },
+        "RecordingWatermarkAlwaysToggle": {
+            "level": 1,
+            "label": "Always Add Watermark",
+            "default": False,
+            "help": "Add the watermark to every recording without asking.",
+        },
+        "RecordingWatermarkText": {
+            "level": 1,
+            "label": "Watermark Text",
+            "default": "Parts of this video are modified by AI",
+            "width": 260,
+            "help": "Text burned into the bottom-right corner of watermarked recordings, and stored in the video file's comment metadata. Press Enter to apply.",
+        },
+        "ShowWatermarkInPreviewToggle": {
+            "level": 1,
+            "label": "Show Watermark in Preview",
+            "default": False,
+            "help": "Show the watermark on the preview too, to check how it will look. Recordings still follow your answer when recording starts.",
+        },
         "OutputFpsCapEnableToggle": {
             "level": 1,
             "label": "Limit Maximum Output FPS",

@@ -40,6 +40,7 @@ from app.processors.video_utils.issue_scanner import (
     IssueScanTargetSnapshot,
 )
 import app.helpers.miscellaneous as misc_helpers
+from app.helpers import watermark
 from app.helpers.typing_helper import (
     ControlTypes,
     FacesParametersTypes,
@@ -47,6 +48,15 @@ from app.helpers.typing_helper import (
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
+
+
+def _tag_watermark_metadata(main_window: Any, final_file_path: str) -> None:
+    """Watermarked recordings also carry the text as file metadata."""
+    if getattr(main_window, "recording_watermark", False) is not True:
+        return
+    watermark.tag_video_file(
+        final_file_path, watermark.watermark_text(main_window.control)
+    )
 
 
 class VideoProcessor(QObject):
@@ -2693,6 +2703,7 @@ class VideoProcessor(QObject):
 
             self._log_processing_summary(processing_time_sec, num_frames_processed)
 
+            _tag_watermark_metadata(self.main_window, final_file_path)
             self._auto_save_workspace_for_output(final_file_path)
 
             # 8b. Reopen media capture AFTER FFmpeg audio merge.
@@ -3369,6 +3380,7 @@ class VideoProcessor(QObject):
             self._cleanup_temp_dir()
 
             if concatenation_successful:
+                _tag_watermark_metadata(self.main_window, final_file_path)
                 self._auto_save_workspace_for_output(final_file_path)
                 common_widget_actions.create_and_show_toast_message(
                     self.main_window,

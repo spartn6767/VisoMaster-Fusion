@@ -25,6 +25,7 @@ from app.ui.widgets.actions import alignment_edit_actions
 from app.ui.widgets.actions import mask_paint_actions
 import app.ui.widgets.actions.layout_actions as layout_actions
 from app.ui.widgets.actions import card_actions
+from app.ui.widgets.actions import watermark_actions
 from app.ui.widgets import widget_components
 from app.ui.widgets import ui_workers
 
@@ -2074,6 +2075,15 @@ def record_video(main_window: "MainWindow", checked: bool):
             )
             main_window.buttonMediaRecord.setChecked(False)  # Uncheck the button
             return
+        if video_processor.file_type != "video":
+            main_window.recording_watermark = False
+        elif (
+            not job_mgr_flag
+            and not is_batch_processing
+            and not watermark_actions.begin_recording_run(main_window)
+        ):
+            main_window.buttonMediaRecord.setChecked(False)  # Uncheck the button
+            return
 
         marker_pairs = main_window.job_marker_pairs
 
@@ -2726,6 +2736,16 @@ def process_batch_images(main_window: "MainWindow", process_all_faces: bool):
             "Please select an Output folder to save the Images/Videos before Saving/Recording!",
             main_window,
         )
+        return
+
+    # Batch runs ask about the watermark once, for all their videos.
+    target_list = main_window.targetVideosList
+    has_videos = not process_all_faces and any(
+        getattr(target_list.itemWidget(target_list.item(i)), "file_type", None)
+        == "video"
+        for i in range(target_list.count())
+    )
+    if has_videos and not watermark_actions.begin_recording_run(main_window):
         return
 
     # 2. Collect all media paths from the target list

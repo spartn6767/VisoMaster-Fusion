@@ -152,3 +152,11 @@ def base_control() -> dict:
         "block_shiftTypeSelection": "NEAREST",
         "AntialiasTypeSelection": "False",
     }
+
+
+@pytest.fixture(autouse=True)
+def _no_watermark_prompt(monkeypatch):
+    """Recording code asks about the watermark in a modal dialog; tests answer No."""
+    monkeypatch.setattr(
+        "app.ui.widgets.actions.watermark_actions._prompt", lambda *_: False
+    )
