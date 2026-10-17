@@ -246,11 +246,12 @@ class StandardProcessor:
 
         def hair_edit_for(fface: dict, target: Any) -> dict:
             """Painted hair mask kwargs for Hair Makeup (Paint Mask > Hair Mask)."""
+            # Like manual_mask_for, a face detected fresh (no alignment_index, e.g.
+            # a cache miss) still gets the mask held for its target face.
             index = fface.get("alignment_index")
             if (
                 not use_alignment_cache
                 or alignment_store is None
-                or index is None
                 or fface.get("kps_5") is None
             ):
                 return {}
@@ -259,12 +260,12 @@ class StandardProcessor:
                 "edit_kps": np.asarray(fface["kps_5"], dtype=np.float64)[:5],
                 "hair_edit": alignment_store.effective_mask(
                     alignment_frame,
-                    int(index),
+                    None if index is None else int(index),
                     None if target_id is None else str(target_id),
                     layer="hair_mask",
                 ),
             }
-            if capture_computed_masks:
+            if capture_computed_masks and index is not None:
                 out["hair_capture"] = computed_hair_masks.setdefault(int(index), [])
             return out
 

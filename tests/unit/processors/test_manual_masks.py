@@ -152,5 +152,9 @@ def test_hair_masks_hold_reset_and_persist(tmp_path):
     loaded.load(path)
     np.testing.assert_array_equal(loaded.effective_mask(2, 0, layer="hair_mask"), hair)
     assert loaded.effective_mask(1, 0, layer="hair_mask") is None
+    # A face detected fresh on a frame (no stored index) gets it by target id.
+    np.testing.assert_array_equal(
+        loaded.effective_mask(2, None, "A", layer="hair_mask"), hair
+    )
     assert loaded.clear_masks("hair_mask") == 2
     assert loaded.mask_frame_count("hair_mask") == 0
