@@ -375,16 +375,27 @@ class VideoProcessor(QObject):
         Slot to display a single, specific frame.
         Used after seeking or loading new media. NOT part of the metronome loop.
         """
+        # TEMP: Hair Mask debugging, remove.
+        import zlib
+
+        print(
+            f"[HairMask debug] display frame={frame_number} gen={generation} "
+            f"active={self.worker_pool_manager.active_single_frame_request_generation} "
+            f"next={self.next_frame_to_display} "
+            f"crc={zlib.crc32(numpy.ascontiguousarray(frame).tobytes())}"
+        )
         # Validate against WorkerPoolManager's generation state to drop out-of-order ghost frames
         if (
             generation != 0
             and generation
             != self.worker_pool_manager.active_single_frame_request_generation
         ):
+            print("[HairMask debug] display rejected: old generation")
             return
 
         # Reject "ghost" frames from older threads during fast UI scrubbing
         if self.file_type == "video" and frame_number != self.next_frame_to_display:
+            print("[HairMask debug] display rejected: not the frame to display")
             del frame
             return
 
