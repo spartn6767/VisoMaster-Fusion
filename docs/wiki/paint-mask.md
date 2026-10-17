@@ -11,7 +11,7 @@ Paint Mask works on a paused video frame. It needs **Settings > Detectors > Reus
 - Click **Paint Mask** on the edit toolbar. The floating Paint Mask bar appears. Drag it by its edge to move it. Close it with its ✕ or by clicking Paint Mask again.
 - Left-drag over a face to paint. The stroke goes to the face nearest to where you start. A click without dragging paints nothing; it only selects that face.
 - **Double-click** on or near a face to paste the mask from the nearest earlier frame with stored faces, like < Paste. Where the frame has no face, a double-click copies the earlier frame's face together with its mask, at the position it had there. If no earlier face is near the click, it draws a box centred on the click for you to adjust in Edit Alignments. Either way, **Z** / **X** then try other frames, and one Ctrl+Z undoes the whole thing.
-- Strokes **add** to the mask. Hold **Shift** while painting, or turn on **Erase** on the bar, to **erase** instead.
+- Strokes **add** to the mask. Press **3** (or turn on **Erase** on the bar) to **erase** instead, and **3** again to paint. Holding **Shift** while painting flips it for that stroke.
 - **Size** and **Feather** are in frame pixels. **Opacity** only changes how see-through the overlay is, not the mask itself.
 - The mask is stored relative to the face's landmarks, so it moves, turns and scales with the face and survives a swapper model change.
 - How it combines with the computed mask: everything the computed mask covers, plus your painted additions, minus your painted erasures. Erasing always wins.
@@ -66,7 +66,7 @@ The keys act on the selected face: the face you last painted or right-clicked, o
 | Reset Frame (M) | Face menu | Uses the computed mask on this frame only. | None: later frames keep the mask they had |
 | Reset From Here | Face menu | Stores an empty keyframe, so this frame uses the computed mask. | Later frames use the computed mask too, up to the next painted keyframe |
 | Apply to Range... | Face menu | Asks for a From and To frame (default: this frame up to the next marker) and gives the same person this face's mask on every stored frame in between. Painted keyframes inside the range are replaced. | Frames after the range keep the mask they showed before |
-| Switch to Erase / Switch to Paint | Face menu | Flips the brush between painting and erasing, the same as the bar's Erase box. | None |
+| Switch to Erase / Switch to Paint (3) | Face menu | Switches the brush between painting and erasing, the same as the bar's Erase box. | None |
 | Switch to Edit Alignments | Face menu | Turns on Edit Alignments with this face selected. | None |
 | Undo / Redo | Bar | Steps back / forward through your mask and alignment edits (Ctrl+Z / Ctrl+Shift+Z). | Later frames go back to what they carried before / after the step |
 | Reset All | Bar | Removes every painted mask in the video (asks first). Also on the edit toolbar as Reset All Masks. | All frames go back to the computed mask |
@@ -82,6 +82,8 @@ While this mode is on, **K** / **L** step back / forward by the frame-step value
 **Trying several frames with < Paste / Paste >:** if the pasted mask doesn't look right, press **Z** (or < Paste) again: the paste is replaced by the mask from the next earlier frame. **X** (Paste >) moves the other way, through this frame (which puts your original mask back) and on to later frames. Frames whose mask is the same as the one shown are skipped, so each press shows a different mask. The bar shows "From frame N" while a pasted mask is shown. The whole run is one undo step, so Ctrl+Z gives you back the mask you had before the first press. Changing frame, selecting another face or making any other edit ends the run.
 
 **Keys for the face menu:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Reset Frame. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
+
+**3** switches the brush between paint and erase (only while Paint Mask is on).
 
 ## Undo and redo
 
