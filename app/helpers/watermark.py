@@ -10,7 +10,7 @@ from typing import Any, Mapping
 import cv2
 import numpy as np
 
-DEFAULT_TEXT = "Parts of this video are modified by AI"
+DEFAULT_TEXT = "AI Modified Video"
 TEXT_KEY = "RecordingWatermarkText"
 PREVIEW_KEY = "ShowWatermarkInPreviewToggle"
 
@@ -20,7 +20,8 @@ _HEIGHT_FRACTION = 0.03
 # Longer text wraps onto more lines instead of running past this width.
 _MAX_WIDTH_FRACTION = 0.6
 _MARGIN_FRACTION = 0.025
-_OPACITY = 0.7
+# Solid cyan (BGR) with a dark outline, so it catches the eye on any scene.
+_COLOR = (255, 255, 0)
 
 
 def watermark_text(control: Mapping[str, Any]) -> str:
@@ -56,7 +57,7 @@ def _wrap(text: str, scale: float, thickness: int, max_width: float) -> list[str
 
 
 def draw_watermark(frame: np.ndarray, text: str) -> np.ndarray:
-    """Draws ``text`` (white with a dark outline, semi-transparent) in the
+    """Draws ``text`` (solid cyan with a dark outline) in the
     bottom-right corner of an HxWx3 uint8 frame and returns the frame."""
     text = text.strip()
     if not text or frame.ndim != 3 or min(frame.shape[:2]) < 8:
@@ -85,10 +86,10 @@ def draw_watermark(frame: np.ndarray, text: str) -> np.ndarray:
         cv2.putText(mask, line, origin, _FONT, scale, 255, thickness, cv2.LINE_AA)
     size = 2 * outline + 1
     halo = cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
-    text_a = (mask.astype(np.float32) / 255.0 * _OPACITY)[..., None]
-    halo_a = (halo.astype(np.float32) / 255.0 * _OPACITY)[..., None]
+    text_a = (mask.astype(np.float32) / 255.0)[..., None]
+    halo_a = (halo.astype(np.float32) / 255.0)[..., None]
     out = roi.astype(np.float32) * (1.0 - halo_a)
-    out = out * (1.0 - text_a) + 255.0 * text_a
+    out = out * (1.0 - text_a) + np.asarray(_COLOR, np.float32) * text_a
     roi[:] = np.clip(out + 0.5, 0, 255).astype(np.uint8)
     return frame
 

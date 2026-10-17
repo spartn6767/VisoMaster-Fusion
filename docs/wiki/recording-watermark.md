@@ -1,6 +1,6 @@
 # Recording watermark
 
-The app can burn a short notice, by default "Parts of this video are modified by AI", into the bottom-right corner of recorded videos. It's off unless you choose it.
+The app can burn a short notice, by default "AI Modified Video", into the bottom-right corner of recorded videos. It's off unless you choose it.
 
 ## When you record
 
@@ -27,7 +27,7 @@ In **Settings > Video Recording Settings**:
 
 ## How it looks
 
-White text with a thin dark outline, slightly see-through, in the bottom-right corner. Its height is about 3% of the video height, so it looks the same at 720p and 4K. Long text wraps onto more lines.
+Solid cyan text with a thin dark outline, in the bottom-right corner. Its height is about 3% of the video height, so it looks the same at 720p and 4K. Long text wraps onto more lines.
 
 ## Limits
 

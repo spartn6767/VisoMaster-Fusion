@@ -218,7 +218,7 @@ SETTINGS_LAYOUT_DATA: Any = {
         "RecordingWatermarkText": {
             "level": 1,
             "label": "Watermark Text",
-            "default": "Parts of this video are modified by AI",
+            "default": "AI Modified Video",
             "width": 260,
             "help": "Text burned into the bottom-right corner of watermarked recordings, and stored in the video file's comment metadata. Press Enter to apply.",
         },
