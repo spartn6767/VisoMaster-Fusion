@@ -26,8 +26,9 @@ def test_embedding_card_shows_picture_and_details(qapp):
         embedding_id="1",
         main_window=None,
     )
-    assert button.icon().isNull()
-    assert button.toolTip() == "Bob"
+    assert not button.icon().isNull()
+    assert button.text() == ""
+    assert "no img" in button.toolTip()
 
     button.set_creation_details(
         {"thumbnail": _thumbnail(), "merge_method": "Median", "source_count": 6}
@@ -39,6 +40,36 @@ def test_embedding_card_shows_picture_and_details(qapp):
     button.kv_map = {"layer": {"k": 1}}
     assert "Includes K/V Maps" in button.toolTip()
     assert "Median of 6 faces" in button.toolTip()
+    assert "#4090a3" in button.styleSheet()
+
+
+def test_embedding_cards_are_face_sized_pictures_sorted_by_name(qapp):
+    import app.ui.main_ui  # noqa: F401  (avoids a circular import)
+    from PySide6 import QtCore
+
+    from app.ui.widgets.actions import list_view_actions
+
+    list_widget = QtWidgets.QListWidget()
+    main_window = SimpleNamespace(
+        inputEmbeddingsList=list_widget,
+        merged_embeddings={},
+        control={"SortEmbeddingsAZToggle": True},
+        face_thumbnail_button_size=(70, 70),
+    )
+    for name in ("Zed", "Amy"):
+        list_view_actions.create_and_add_embed_button_to_list(
+            main_window,
+            name,
+            {},
+            name,
+            details={"thumbnail": _thumbnail()} if name == "Amy" else None,
+        )
+    buttons = [list_widget.itemWidget(list_widget.item(i)) for i in range(2)]
+    assert [b.embedding_name for b in buttons] == ["Amy", "Zed"]
+    for button in buttons:
+        assert button.size() == QtCore.QSize(70, 70)
+        assert button.text() == ""
+        assert not button.icon().isNull()
 
 
 def test_editor_keeps_extra_fields_on_load_and_save(qapp, tmp_path, monkeypatch):

@@ -69,8 +69,10 @@ def test_describe_merge_and_tooltip():
     assert et.describe_merge("Median", 6) == "Median of 6 faces"
     assert et.describe_merge("Mean", 1) == "Made from 1 face"
     assert et.describe_merge(None, None) == ""
-    assert et.tooltip_text("Bob", None, None, None) == "Bob"
-    assert et.tooltip_text("Bob", None, None, None, True) == "Bob (Includes K/V Maps)"
+    plain = et.tooltip_text("Bob", None, None, None)
+    assert "no img" in plain and "<b>Bob</b>" in plain
+    assert "Picture:" not in plain
+    assert "Includes K/V Maps" in et.tooltip_text("Bob", None, None, None, True)
     thumb = et.encode_thumbnail(np.zeros((10, 10, 3), np.uint8))
     tip = et.tooltip_text("<Bob>", thumb, "Median", 6, True)
     assert "data:image/jpeg;base64," in tip

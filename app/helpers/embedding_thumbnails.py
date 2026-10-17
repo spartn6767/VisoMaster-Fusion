@@ -102,14 +102,18 @@ def tooltip_text(
 ) -> str:
     description = describe_merge(merge_method, source_count)
     has_picture = thumbnail_bytes(thumbnail) is not None
-    if not has_picture and not description:
-        return f"{name} (Includes K/V Maps)" if has_kv_maps else name
-    parts = []
     if has_picture:
-        parts.append(
+        picture = (
             f'<img src="data:image/jpeg;base64,{html.escape(thumbnail)}" '
             f'width="{THUMBNAIL_SIZE}" height="{THUMBNAIL_SIZE}">'
         )
+    else:
+        picture = (
+            '<table border="1" cellspacing="0"><tr>'
+            f'<td width="{THUMBNAIL_SIZE}" height="{THUMBNAIL_SIZE}" '
+            'align="center" valign="middle">no img</td></tr></table>'
+        )
+    parts = [picture]
     parts.append(f"<b>{html.escape(name)}</b>")
     if description:
         parts.append(html.escape(description))

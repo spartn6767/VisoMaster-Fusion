@@ -97,6 +97,20 @@ class TwoLineElidedLabel(QtWidgets.QLabel):
         super().setText(f"{first_line}\n{second_line}")
 
 
+def _no_image_pixmap(size: int = embedding_thumbnails.THUMBNAIL_SIZE) -> QtGui.QPixmap:
+    """Placeholder picture for embeddings saved without one."""
+    pixmap = QtGui.QPixmap(size, size)
+    pixmap.fill(QtGui.QColor("#3a3a3a"))
+    painter = QtGui.QPainter(pixmap)
+    painter.setPen(QtGui.QColor("#b0b0b0"))
+    font = painter.font()
+    font.setPixelSize(size // 5)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "no img")
+    painter.end()
+    return pixmap
+
+
 class CardButton(QPushButton):
     def __init__(self, *args, **kwargs):
         self.main_window = kwargs.pop("main_window", None)
@@ -1803,8 +1817,8 @@ class EmbeddingCardButton(CardButton):
         self.source_count: int | None = None
 
         self.setCheckable(True)
-        self.setText(embedding_name)
-        self.setToolTip(embedding_name)
+        self._show_picture()
+        self._refresh_tooltip()
         self.clicked.connect(self.load_embedding)
 
         # Set the context menu policy to trigger the custom context menu on right-click
@@ -1844,10 +1858,10 @@ class EmbeddingCardButton(CardButton):
         has_legacy_map = self._kv_map is not None and len(self._kv_map) > 0
         has_new_map_list = self._kv_map_list is not None and len(self._kv_map_list) > 0
 
-        # If valid tensors are loaded, change the text color to the accent and update tooltip
+        # If valid tensors are loaded, outline the card in the accent color
         if has_legacy_map or has_new_map_list:
             # Using the UI's native accent color (#4090a3) for consistency
-            self.setStyleSheet("color: #4090a3;")
+            self.setStyleSheet("QPushButton:!checked { border: 2px solid #4090a3; }")
             self._refresh_tooltip()
         else:
             # Reset to default UI style
@@ -1859,14 +1873,16 @@ class EmbeddingCardButton(CardButton):
         self.thumbnail = details.get("thumbnail")
         self.merge_method = details.get("merge_method")
         self.source_count = details.get("source_count")
+        self._show_picture()
+        self._refresh_tooltip()
+
+    def _show_picture(self) -> None:
         pixmap = QtGui.QPixmap()
         data = embedding_thumbnails.thumbnail_bytes(self.thumbnail)
-        if data and pixmap.loadFromData(data):
-            self.setIcon(QtGui.QIcon(pixmap))
-            self.setIconSize(QtCore.QSize(18, 18))
-        else:
-            self.setIcon(QtGui.QIcon())
-        self._refresh_tooltip()
+        if not (data and pixmap.loadFromData(data)):
+            pixmap = _no_image_pixmap()
+        self.setText("")
+        self.setIcon(QtGui.QIcon(pixmap))
 
     def _refresh_tooltip(self) -> None:
         self.setToolTip(

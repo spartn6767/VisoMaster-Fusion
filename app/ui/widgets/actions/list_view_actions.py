@@ -438,7 +438,11 @@ def apply_face_thumbnail_size(
     button_size = QtCore.QSize(*button_size_tuple)
     grid_size_with_padding = button_size + QtCore.QSize(4, 4)
 
-    for listWidget in (main_window.targetFacesList, main_window.inputFacesList):
+    for listWidget in (
+        main_window.targetFacesList,
+        main_window.inputFacesList,
+        main_window.inputEmbeddingsList,
+    ):
         listWidget.setGridSize(grid_size_with_padding)
         for i in range(listWidget.count()):
             list_item = listWidget.item(i)
@@ -561,12 +565,12 @@ def create_and_add_embed_button_to_list(
     )
     if details:
         embed_button.set_creation_details(details)
-    embed_button.setStyleSheet("QPushButton { padding: 2px 8px; }")
-
-    size = embed_button.sizeHint()
-    size.setHeight(24)
-    size.setWidth(max(size.width(), 60))
+    size = QtCore.QSize(*_get_face_button_size(main_window))
     embed_button.setFixedSize(size)
+    embed_button.setIconSize(size - QtCore.QSize(8, 8))
+    # One scrolling row of picture cards, sized like the face cards
+    inputEmbeddingsList.setWrapping(False)
+    inputEmbeddingsList.setGridSize(size + QtCore.QSize(4, 4))
 
     list_item = QtWidgets.QListWidgetItem(inputEmbeddingsList)
     list_item.setSizeHint(size)
