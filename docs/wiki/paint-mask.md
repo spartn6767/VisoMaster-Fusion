@@ -37,20 +37,24 @@ What an edit changes:
 - **Masks belong to a person.** A mask follows the target face the face was matched to, so a mask painted on one person never carries onto someone else. A face that isn't matched to any target face doesn't carry its mask to later frames.
 - **Each frame places the mask on its own landmarks.** If you fix a face's landmarks with Edit Alignments, the painted mask on that frame moves with them.
 
-## Bar buttons
+## Face menu and bar
 
-The buttons act on the selected face: the face you last painted or right-clicked, or the only face on the frame.
+Right-click inside a face's box (the box Edit Alignments shows) for the actions on that face; the keys are shown next to them. Right-clicking outside every box shows the usual viewer menu. The floating bar keeps Undo / Redo and Reset All.
 
-| Button | What it does | Effect on later frames |
-|---|---|---|
-| Undo / Redo | Steps back / forward through your mask and alignment edits (Ctrl+Z / Ctrl+Shift+Z). | Later frames go back to what they carried before / after the step |
-| Copy | Copies the selected face's mask (its own or the carried one). | None |
-| Paste | Pastes the copied mask onto the selected face as a keyframe. | Carries forward like a painted mask |
-| < Paste / Paste > | Copies the mask from the nearest earlier / later frame with stored alignments onto this frame as a keyframe. Press again to try the next frame (see below). | Carries forward like a painted mask |
-| Reset Frame | Uses the computed mask on this frame only. | None: later frames keep the mask they had |
-| Reset From Here | Stores an empty keyframe, so this frame uses the computed mask. | Later frames use the computed mask too, up to the next painted keyframe |
-| Apply to Range... | Asks for a From and To frame (default: this frame up to the next marker) and gives the same person this face's mask on every stored frame in between. Painted keyframes inside the range are replaced. | Frames after the range keep the mask they showed before |
-| Reset All | Removes every painted mask in the video (asks first). Also on the edit toolbar as Reset All Masks. | All frames go back to the computed mask |
+The keys act on the selected face: the face you last painted or right-clicked, or the only face on the frame.
+
+| Item | Where | What it does | Effect on later frames |
+|---|---|---|---|
+| Copy Mask (C) | Face menu | Copies the face's mask (its own or the carried one). | None |
+| Paste Mask (V) | Face menu | Pastes the copied mask onto the face as a keyframe. Greyed out until you copy one. | Carries forward like a painted mask |
+| < Paste / Paste > (Z / X) | Face menu | Copies the mask from the nearest earlier / later frame with stored alignments onto this frame as a keyframe. Press the key again to try the next frame (see below). | Carries forward like a painted mask |
+| Reset Frame (M) | Face menu | Uses the computed mask on this frame only. | None: later frames keep the mask they had |
+| Reset From Here | Face menu | Stores an empty keyframe, so this frame uses the computed mask. | Later frames use the computed mask too, up to the next painted keyframe |
+| Apply to Range... | Face menu | Asks for a From and To frame (default: this frame up to the next marker) and gives the same person this face's mask on every stored frame in between. Painted keyframes inside the range are replaced. | Frames after the range keep the mask they showed before |
+| Switch to Erase / Switch to Paint | Face menu | Flips the brush between painting and erasing, the same as the bar's Erase box. | None |
+| Switch to Edit Alignments | Face menu | Turns on Edit Alignments with this face selected. | None |
+| Undo / Redo | Bar | Steps back / forward through your mask and alignment edits (Ctrl+Z / Ctrl+Shift+Z). | Later frames go back to what they carried before / after the step |
+| Reset All | Bar | Removes every painted mask in the video (asks first). Also on the edit toolbar as Reset All Masks. | All frames go back to the computed mask |
 
 ## Brush circle
 
@@ -62,7 +66,7 @@ While this mode is on, **K** / **L** step back / forward by the frame-step value
 
 **Trying several frames with < Paste / Paste >:** if the pasted mask doesn't look right, press **Z** (or < Paste) again: the paste is replaced by the mask from the next earlier frame. **X** (Paste >) moves the other way, through this frame (which puts your original mask back) and on to later frames. Frames whose mask is the same as the one shown are skipped, so each press shows a different mask. The bar shows "From frame N" while a pasted mask is shown. The whole run is one undo step, so Ctrl+Z gives you back the mask you had before the first press. Changing frame, selecting another face or making any other edit ends the run.
 
-**Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Reset Frame. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
+**Keys for the face menu:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Reset Frame. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
 
 ## Undo and redo
 

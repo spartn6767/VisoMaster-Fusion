@@ -28,6 +28,7 @@ _BAR_BUTTONS_ATTR = "_mask_bar_buttons"
 _PASTE_LABEL_ATTR = "_mask_paste_label"
 _PASTE_RUN_ATTR = "_paste_run"
 _CURSOR_ATTR = "_mask_brush_cursor"
+_ERASE_BOX_ATTR = "_mask_erase_box"
 _MIN_DRAG_PIXELS = 3  # screen pixels; a click without a drag paints nothing
 _ADD_RGB = (0, 220, 120)
 _ERASE_RGB = (255, 60, 60)
@@ -46,6 +47,18 @@ def brush_settings(main_window: "MainWindow") -> dict[str, Any]:
         brush = dict(DEFAULT_BRUSH)
         main_window.mask_brush = brush
     return brush
+
+
+def set_erase(main_window: "MainWindow", erase: bool) -> None:
+    """Brush erases (True) or paints (False); keeps the bar's Erase box in step."""
+    brush_settings(main_window)["erase"] = bool(erase)
+    box = getattr(main_window, _ERASE_BOX_ATTR, None)
+    if box is None:
+        return
+    try:
+        box.setChecked(bool(erase))
+    except RuntimeError:  # bar already deleted
+        setattr(main_window, _ERASE_BOX_ATTR, None)
 
 
 def is_mask_paint_active(main_window: "MainWindow") -> bool:
@@ -99,8 +112,12 @@ def sync_mask_paint_ui(main_window: "MainWindow") -> None:
 BAR_ACTIONS = (
     ("undo", "Undo", "Undo the last alignment or mask edit (Ctrl+Z)."),
     ("redo", "Redo", "Redo the last undone edit (Ctrl+Shift+Z)."),
-    ("copy", "Copy", "Copy the selected face's mask (C)."),
-    ("paste", "Paste", "Paste the copied mask onto the selected face (V)."),
+    ("reset_all", "Reset All", "Remove every painted mask in this video."),
+)
+# Right-click menu on a face box (edit_toolbar_actions.face_menu_at).
+FACE_ACTIONS = (
+    ("copy", "Copy Mask", "Copy this face's mask (C)."),
+    ("paste", "Paste Mask", "Paste the copied mask onto this face (V)."),
     (
         "previous",
         "< Paste",
@@ -115,11 +132,10 @@ BAR_ACTIONS = (
     ),
     ("reset_frame", "Reset Frame", "Computed mask on this frame only (M)."),
     ("reset_on", "Reset From Here", "Computed mask from this frame on."),
-    ("reset_all", "Reset All", "Remove every painted mask in this video."),
     (
         "range",
         "Apply to Range...",
-        "Use the selected face's mask on every frame from one frame to another.",
+        "Use this face's mask on every frame from one frame to another.",
     ),
 )
 
@@ -445,10 +461,8 @@ def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
     return result
 
 
-def _sync_bar_buttons(main_window: "MainWindow") -> None:
-    buttons = getattr(main_window, _BAR_BUTTONS_ATTR, None)
-    if not buttons:
-        return
+def action_states(main_window: "MainWindow") -> dict[str, bool]:
+    """Which brush-bar and face-menu actions apply to the selected face."""
     store = main_window.alignments
     frame_number = aea.current_frame_number(main_window)
     face_index = active_face(main_window)
@@ -469,11 +483,19 @@ def _sync_bar_buttons(main_window: "MainWindow") -> None:
             reset_on=has_mask,
             range=_face_id(main_window, frame_number, face_index) is not None,
         )
+    return enabled
+
+
+def _sync_bar_buttons(main_window: "MainWindow") -> None:
+    buttons = getattr(main_window, _BAR_BUTTONS_ATTR, None)
+    if not buttons:
+        return
+    enabled = action_states(main_window)
     for key, button in buttons.items():
         button.setEnabled(bool(enabled.get(key, False)))
     label = getattr(main_window, _PASTE_LABEL_ATTR, None)
     if label is not None:
-        label.setText(paste_source_text(main_window, "mask", face_index))
+        label.setText(paste_source_text(main_window, "mask", active_face(main_window)))
 
 
 def default_bar_position(bar: QtWidgets.QWidget) -> tuple[int, int]:
@@ -562,6 +584,7 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     erase.setChecked(bool(brush["erase"]))
     erase.toggled.connect(lambda checked: brush.__setitem__("erase", bool(checked)))
     layout.addWidget(erase)
+    setattr(main_window, _ERASE_BOX_ATTR, erase)
 
     frame_only = QtWidgets.QCheckBox("This Frame Only", bar)
     frame_only.setChecked(bool(brush.get("frame_only", False)))
@@ -608,10 +631,9 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
         button.clicked.connect(partial(toolbar_action, main_window, key))
         actions_row.addWidget(button)
         bar_buttons[key] = button
-        if key == "next":
-            label = paste_source_label(bar)
-            actions_row.addWidget(label)
-            setattr(main_window, _PASTE_LABEL_ATTR, label)
+    label = paste_source_label(bar)
+    actions_row.addWidget(label)
+    setattr(main_window, _PASTE_LABEL_ATTR, label)
     setattr(main_window, _BAR_BUTTONS_ATTR, bar_buttons)
 
     bar.adjustSize()
@@ -1139,26 +1161,3 @@ def handle_double_click(
         aspect=rect.height() / rect.width(),
     )
     return True
-
-
-# --- Context menu ----------------------------------------------------------
-def add_context_menu_actions(
-    main_window: "MainWindow", menu: QtWidgets.QMenu, scene_pos: QtCore.QPointF
-) -> dict[QtGui.QAction, Callable[[], Any]]:
-    handlers: dict[QtGui.QAction, Callable[[], Any]] = {}
-    if not is_mask_paint_active(main_window):
-        return handlers
-    frame_number = aea.current_frame_number(main_window)
-    rect = aea._pixmap_rect(main_window)
-    point = (
-        aea._to_normalized(rect, scene_pos.x(), scene_pos.y())
-        if rect is not None
-        else (0.5, 0.5)
-    )
-    face_index = aea.nearest_face_index(
-        aea._frame_faces(main_window, frame_number), *point
-    )
-    if face_index is not None:
-        set_active_face(main_window, frame_number, face_index)
-        _sync_bar_buttons(main_window)
-    return handlers

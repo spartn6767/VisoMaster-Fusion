@@ -996,32 +996,6 @@ def paste_or_draw_at(
     return index
 
 
-def add_context_menu_actions(
-    main_window: "MainWindow", menu: QtWidgets.QMenu, scene_pos: QtCore.QPointF
-) -> dict[QtGui.QAction, Callable[[], Any]]:
-    """Right-click selects the face under the cursor for the floating bar.
-
-    Adds no menu entries (the mode toggles live on the edit toolbar)."""
-    handlers: dict[QtGui.QAction, Callable[[], Any]] = {}
-    if not is_alignment_edit_active(main_window):
-        return handlers
-    frame_number = current_frame_number(main_window)
-    rect = _pixmap_rect(main_window)
-    faces = _frame_faces(main_window, frame_number)
-    point = (
-        _to_normalized(rect, scene_pos.x(), scene_pos.y())
-        if rect is not None
-        else (0.5, 0.5)
-    )
-    face_index = face_index_at(faces, *point) if faces else None
-    if face_index is not None:
-        from app.ui.widgets.actions import edit_toolbar_actions
-
-        select_face(main_window, frame_number, face_index)
-        edit_toolbar_actions.sync_alignment_bar(main_window)
-    return handlers
-
-
 # --- Target media switching ----------------------------------------------
 _SUPPRESS_SWITCH_PROMPT_ATTR = "_suppress_media_switch_prompt"
 

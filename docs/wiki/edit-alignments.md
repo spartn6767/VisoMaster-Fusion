@@ -14,23 +14,35 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 - **Drag a corner square** to resize the box.
 - **Drag on an empty area** to draw a box around a face the detector missed. The app fills in its landmarks on the next refresh.
 - **Double-click** where the detector missed a face to copy the face from the nearest earlier frame with stored faces, at the position it had there. If no earlier face is near the click, a box is drawn centred on the click (sized like the earlier face, or a default size) for you to adjust; its landmarks are filled in on the next refresh. Double-clicking an existing box replaces it with the earlier frame's face, like < Paste. Either way, **Z** / **X** then try other frames as described below, and one Ctrl+Z undoes the whole thing.
-- **Right-click a face** to select it for the bar's buttons.
+- **Right-click inside a face's box** for the actions on that face (see below). Right-clicking outside every box shows the usual viewer menu (Fit to View, Zoom, Save Image...).
+
+## Face menu
+
+Right-click inside a face's box. The menu only has actions for that face; the keys are shown next to them.
+
+| Item | What it does |
+|---|---|
+| Copy (C) | Copies the face. |
+| Paste (V) | Pastes the copied face, replacing this face. Greyed out until you copy one. |
+| < Paste / Paste > (Z / X) | Pastes the face from the nearest earlier / later frame with stored alignments. Press the key again to try the next frame (see below). |
+| Assign to Target | Pins the face to a target face, skipping the usual look-alike matching for it on this frame. |
+| Add as Target | Creates a target face from the face. |
+| Delete Face (M) | Deletes the face from this frame. |
+| Fill Between Edits | Blends the face between the previous frame you edited it on and this frame. See below. |
+| Switch to Paint Mask | Turns on Paint Mask with this face selected. |
+
+The keys act on the selected face: the face you last right-clicked or dragged, or the only face on the frame.
 
 ## Bar buttons
+
+The floating bar has the actions that aren't about one face.
 
 | Button | What it does |
 |---|---|
 | Undo / Redo | Steps back / forward through your alignment and mask edits (Ctrl+Z / Ctrl+Shift+Z). See below. |
 | Re-detect Frame | Drops this frame's stored faces, including manual edits and painted masks, so the frame is detected again. |
 | Reset All Alignments | Discards every stored alignment in the video (asks first). |
-| Copy | Copies the selected face. |
-| Paste | Pastes the copied face, replacing the selected face. |
-| < Paste / Paste > | Pastes the face from the nearest earlier / later frame with stored alignments. Press again to try the next frame (see below). |
-| Assign to Target | Pins the selected face to a target face, skipping the usual look-alike matching for it on this frame. |
-| Add as Target | Creates a target face from the selected face. |
-| Delete Face | Deletes the selected face from this frame. |
 | Find Frames to Check | Marks frames worth a look in pink on the seek bar. See below. |
-| Fill Between Edits | Blends the selected face between the previous frame you edited it on and this frame. See below. |
 
 ## Autosave
 
@@ -40,9 +52,9 @@ With **Settings > Detectors > Autosave Alignments** on (the default), unsaved al
 
 While this mode is on, **K** / **L** step back / forward by the frame-step value (default 1), as they do outside the mode. (C and V do Copy and Paste here.)
 
-**Trying several frames with < Paste / Paste >:** if the pasted face doesn't fit, press **Z** (or < Paste) again: the paste is replaced by the face from the next earlier frame. **X** (Paste >) moves the other way, one frame at a time, through this frame (which puts your original face back) and on to later frames. For example, on frame 120: Z, Z, Z pastes from 119, 118, 117; X then goes back to 118. The bar shows "From frame N" next to the buttons while a pasted face is shown. The whole run is one undo step, so Ctrl+Z gives you back the face you had before the first press. Changing frame, selecting another face or making any other edit ends the run; the next Z / X starts from the nearest frame again.
+**Trying several frames with < Paste / Paste >:** if the pasted face doesn't fit, press **Z** (or < Paste) again: the paste is replaced by the face from the next earlier frame. **X** (Paste >) moves the other way, one frame at a time, through this frame (which puts your original face back) and on to later frames. For example, on frame 120: Z, Z, Z pastes from 119, 118, 117; X then goes back to 118. The bar shows "From frame N" while a pasted face is shown. The whole run is one undo step, so Ctrl+Z gives you back the face you had before the first press. Changing frame, selecting another face or making any other edit ends the run; the next Z / X starts from the nearest frame again.
 
-**Keys for the bar buttons:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Delete Face. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
+**Keys for the face actions:** **C** Copy, **V** Paste, **Z** < Paste, **X** Paste >, **M** Delete Face. While the mode is on, these replace the keys' usual actions (Z jump to start, X Face Compare).
 
 ## Undo and redo
 
@@ -59,7 +71,7 @@ While this mode is on, **K** / **L** step back / forward by the frame-step value
 
 - **Edited frames are marked:** frames with manual alignment or mask edits show a cyan mark under the seek bar. Press **N** / **P** to jump to the next / previous one.
 - **Find Frames to Check** marks frames in pink above the seek bar where a face's landmarks suddenly jump from the frame before, or where a face disappears for 1 to 3 frames. Press **Shift+N** / **Shift+P** to step through them. Only faces matched to a target face are checked, and only frames that already have stored alignments. Run it again after fixing frames to update the marks.
-- **Fill Between Edits:** fix the face by hand on the first and last frame of a bad run, then select it on the last frame and click Fill Between Edits. Every frame in between gets a face blended between the two fixes (box and landmarks), and is marked as edited. Faces on those frames are replaced; painted masks on them are kept. One Undo reverts the whole fill.
+- **Fill Between Edits:** fix the face by hand on the first and last frame of a bad run, then right-click it on the last frame and choose Fill Between Edits. Every frame in between gets a face blended between the two fixes (box and landmarks), and is marked as edited. Faces on those frames are replaced; painted masks on them are kept. One Undo reverts the whole fill.
 
 ## What an edit affects
 

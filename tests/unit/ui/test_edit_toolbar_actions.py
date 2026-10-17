@@ -96,16 +96,29 @@ def test_floating_alignment_bar(monkeypatch):
     eta.sync_alignment_bar(main_window)
     bar = main_window._alignment_bar
     buttons = main_window._alignment_bar_buttons
-    assert not bar.isHidden() and bar.layout().count() == 2
-    assert buttons["redetect"].isEnabled() and not buttons["copy"].isEnabled()
+    assert not bar.isHidden() and "copy" not in buttons
+    assert buttons["redetect"].isEnabled()
 
-    aea.select_face(main_window, 2, 1)
-    eta.sync_alignment_bar(main_window)
-    assert buttons["copy"].isEnabled() and buttons["previous"].isEnabled()
-    assert not buttons["next"].isEnabled()
-    assert eta.alignment_bar_action(main_window, "copy")
-    assert buttons["paste"].isEnabled()
-    assert eta.alignment_bar_action(main_window, "delete")
+    assert eta.face_menu_at(main_window, None, 0.55, 0.3) is None  # between boxes
+    menu = eta.face_menu_at(main_window, None, 0.7, 0.3)
+    assert eta.active_alignment_face(main_window) == 1
+    actions = {a.text().split("\t")[0]: a for a in menu.actions()}
+    assert list(actions) == [t for _, t, _ in eta.ALIGNMENT_FACE_ACTIONS] + [
+        "",
+        "Switch to Paint Mask",
+    ]
+    assert actions["Copy"].text() == "Copy\tC"
+    assert actions["Delete Face"].text() == "Delete Face\tM"
+    assert actions["< Paste"].isEnabled() and not actions["Paste >"].isEnabled()
+    assert not actions["Paste"].isEnabled()
+    assert [a.text() for a in actions["Assign to Target"].menu().actions()] == [
+        "No target faces"
+    ]
+    actions["Copy"].trigger()
+    menu = eta.face_menu_at(main_window, None, 0.7, 0.3)
+    actions = {a.text().split("\t")[0]: a for a in menu.actions()}
+    assert actions["Paste"].isEnabled()
+    actions["Delete Face"].trigger()
     assert len(store.get(2, 1, 1, None)) == 1
 
     menu = QtWidgets.QMenu()
@@ -211,3 +224,37 @@ def test_save_alignments_saves_next_to_workspace_or_asks_first(tmp_path, monkeyp
     assert eta._save_alignments(main_window)
     assert eta._save_alignments(main_window)
     assert saves == [False, False, str(workspace)] and len(toasts) == 2
+
+
+def test_face_menu_only_in_edit_modes(monkeypatch):
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    main_window = _main_window()
+    main_window.alignments.put(
+        2, [{"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": [[0.2, 0.2]] * 5}], 1, 1, "sig"
+    )
+    monkeypatch.setattr(aea, "is_alignment_edit_active", lambda mw: False)
+    monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: False)
+    assert eta.face_menu_at(main_window, None, 0.3, 0.3) is None
+
+
+def test_face_menu_switches_edit_mode(monkeypatch):
+    main_window = _main_window()
+    main_window.alignments.put(
+        2, [{"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": [[0.2, 0.2]] * 5}], 1, 1, "sig"
+    )
+    modes: list[bool] = []
+    monkeypatch.setattr(aea, "is_alignment_edit_active", lambda mw: not modes)
+    monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: bool(modes))
+    monkeypatch.setattr(mpa, "set_mask_paint_mode", lambda mw, on: modes.append(on))
+    monkeypatch.setattr(aea, "set_alignment_edit_mode", lambda mw, on: modes.clear())
+
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    assert menu.actions()[-1].text() == "Switch to Paint Mask"
+    menu.actions()[-1].trigger()
+    assert modes == [True]
+    assert getattr(main_window, mpa._ACTIVE_FACE_ATTR) == (2, 0)
+
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    assert menu.actions()[-1].text() == "Switch to Edit Alignments"
+    menu.actions()[-1].trigger()
+    assert modes == [] and eta.active_alignment_face(main_window) == 0
