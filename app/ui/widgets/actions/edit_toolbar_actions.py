@@ -177,6 +177,12 @@ ALIGNMENT_FACE_ACTIONS = (
     ),
     ("assign", "Assign to Target", "Pin the selected face to a target face."),
     ("add_target", "Add as Target", "Create a target face from the selected face."),
+    (
+        "back_of_head",
+        "Back of Head",
+        "Hair only: no face swap on this box, just its target's Hair Makeup. "
+        "For a head turned away from the camera.",
+    ),
     ("delete", "Delete Face", "Delete the selected face (M)."),
     (
         "fill",
@@ -227,6 +233,8 @@ def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
             )
         elif key == "add_target":
             result = aea.add_as_target_face(main_window, frame_number, face_index)
+        elif key == "back_of_head":
+            result = aea.toggle_back_of_head(main_window, frame_number, face_index)
         elif key == "delete":
             aea.delete_face(main_window, frame_number, face_index)
             result = True
@@ -289,6 +297,17 @@ def _build_alignment_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
         button.clicked.connect(lambda *_, k=key: alignment_bar_action(main_window, k))
         top.addWidget(button)
         buttons[key] = button
+    draw = QtWidgets.QToolButton(bar)
+    draw.setText("Draw Back of Head")
+    draw.setToolTip(
+        "While on, boxes you draw are Back of Head boxes: hair only, no face swap."
+    )
+    draw.setCheckable(True)
+    draw.toggled.connect(
+        lambda on: setattr(main_window, aea.DRAW_BACK_OF_HEAD_ATTR, on)
+    )
+    top.addWidget(draw)
+    buttons["draw_back_of_head"] = draw
     label = mpa.paste_source_label(bar)
     top.addWidget(label)
     setattr(main_window, _ALIGN_PASTE_LABEL_ATTR, label)
@@ -326,6 +345,12 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
     enabled = alignment_action_states(main_window)
     for key, button in getattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, {}).items():
         button.setEnabled(bool(enabled.get(key, False)))
+        if key == "draw_back_of_head":
+            button.blockSignals(True)
+            button.setChecked(
+                bool(getattr(main_window, aea.DRAW_BACK_OF_HEAD_ATTR, False))
+            )
+            button.blockSignals(False)
     label = getattr(main_window, _ALIGN_PASTE_LABEL_ATTR, None)
     if label is not None:
         label.setText(
@@ -347,6 +372,7 @@ def alignment_action_states(main_window: "MainWindow") -> dict[str, bool]:
         "undo": store.can_undo(),
         "redo": store.can_redo(),
         "paste": getattr(main_window, aea._CLIPBOARD_ATTR, None) is not None,
+        "draw_back_of_head": True,
     }
     if face_index is not None:
         enabled.update(
@@ -357,6 +383,7 @@ def alignment_action_states(main_window: "MainWindow") -> dict[str, bool]:
             is not None,
             assign=True,
             add_target=True,
+            back_of_head=True,
             delete=True,
             fill=bool(store.edited_frames())
             and store.edited_frames()[0] < frame_number - 1,
@@ -410,6 +437,10 @@ def face_menu_at(
             shortcut = FACE_MENU_KEYS.get(key)
             action = menu.addAction(f"{text}\t{shortcut}" if shortcut else text)
             action.triggered.connect(lambda *_, k=key: run(main_window, k))
+            if key == "back_of_head":
+                faces = aea._frame_faces(main_window, frame_number)
+                action.setCheckable(True)
+                action.setChecked(bool(faces[face_index].get("hair_only")))
         action.setToolTip(tip)
         action.setEnabled(bool(enabled.get(key, False)))
     paint = run is mpa.toolbar_action

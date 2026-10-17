@@ -566,3 +566,76 @@ def test_key_3_toggles_paint_and_erase(main_window, monkeypatch):
     main_window.alignment_edit_enabled = False
     assert not aea.edit_mode_key(main_window, key(Qt.Key.Key_3))
     assert main_window.mask_brush["erase"] is False
+
+
+def test_drawn_back_of_head_box_keeps_box_points_and_persists(main_window, tmp_path):
+    bbox = np.array([0.1, 0.1, 0.3, 0.4], np.float32)
+    assert aea.add_manual_face(main_window, 4, bbox, "target-1") == 0
+    face = main_window.alignments.get(4, 1, 1, None)[0]
+    assert face["hair_only"] is True and face["refine"] is False
+    assert face["assigned_face_id"] == "target-1"
+    np.testing.assert_allclose(face["kps_5"], aea.template_kps_for_bbox(bbox))
+
+    path = str(tmp_path / "b.alignments.npz")
+    main_window.alignments.save(path)
+    loaded = AlignmentStore()
+    loaded.load(path)
+    assert loaded.get(4, 1, 1, None)[0]["hair_only"] is True
+    assert main_window.alignments.get(4, 1, 1, None) is not None
+    assert aea.add_manual_face(main_window, 4, bbox) == 1
+    assert main_window.alignments.get(4, 1, 1, None)[1]["hair_only"] is False
+
+
+def test_toggle_back_of_head_and_back(main_window):
+    store = main_window.alignments
+    face = dict(_face(10, 10, 50, 60), kps_203=np.ones((203, 2), np.float32))
+    store.put(2, [face], 100, 100, "sig")
+    main_window.target_faces = {"t1": SimpleNamespace(face_id="t1")}
+
+    assert aea.toggle_back_of_head(main_window, 2, 0)
+    stored = store.get(2, 100, 100, None)[0]
+    assert stored["hair_only"] and stored["assigned_face_id"] == "t1"
+    assert stored["source"] == SOURCE_MANUAL and not stored["refine"]
+    assert stored["embedding"] is None and stored["kps_203"] is None
+    np.testing.assert_allclose(
+        stored["kps_5"], aea.template_kps_for_bbox([10, 10, 50, 60]), atol=1e-3
+    )
+
+    assert aea.toggle_back_of_head(main_window, 2, 0)
+    stored = store.get(2, 100, 100, None)[0]
+    assert not stored["hair_only"] and stored["refine"]
+    assert stored["assigned_face_id"] == "t1"
+    assert store.undo() is not None
+    assert store.get(2, 100, 100, None)[0]["hair_only"]
+    assert not aea.toggle_back_of_head(main_window, 2, 3)
+
+
+def test_pick_back_of_head_target(main_window, monkeypatch):
+    infos = []
+    monkeypatch.setattr(
+        aea.QtWidgets.QMessageBox, "information", lambda *a, **k: infos.append(a)
+    )
+    main_window.target_faces = {}
+    assert aea.pick_back_of_head_target(main_window) is None and infos
+
+    main_window.target_faces = {"a": SimpleNamespace(face_id="a")}
+    assert aea.pick_back_of_head_target(main_window) == "a"
+
+    main_window.target_faces["b"] = SimpleNamespace(face_id="b")
+    main_window.parameters = {"b": {"HairMakeupEnableToggle": True}}
+    asked = []
+
+    def get_item(parent, title, text, labels, default, editable):
+        asked.append((labels, default))
+        return labels[default], True
+
+    monkeypatch.setattr(aea.QtWidgets.QInputDialog, "getItem", get_item)
+    assert aea.pick_back_of_head_target(main_window) == "b"
+    assert asked[-1] == (["1. Target 1", "2. Target 2"], 1)
+    assert aea.pick_back_of_head_target(main_window, "a") == "a"
+    monkeypatch.setattr(aea.QtWidgets.QInputDialog, "getItem", lambda *a: ("", False))
+    assert aea.pick_back_of_head_target(main_window) is None
+
+    main_window.alignments.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    assert not aea.toggle_back_of_head(main_window, 1, 0)
+    assert not main_window.alignments.get(1, 1, 1, None)[0]["hair_only"]

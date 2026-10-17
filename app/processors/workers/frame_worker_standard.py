@@ -225,6 +225,8 @@ class StandardProcessor:
                 )
                 if assigned is not None:
                     return assigned, assigned_params, 1.0
+            if fface.get("hair_only"):
+                return None, None, 0.0
             return self.worker._find_best_target_match(
                 fface["embedding"],
                 control,
@@ -330,6 +332,28 @@ class StandardProcessor:
                     "HairMakeupBlueSlider": b,
                 }
             return data
+
+        def hair_only_makeup(
+            img: torch.Tensor, fface: dict, target: Any, params: Any
+        ) -> torch.Tensor:
+            """Back of Head box: no swap, only the target's Hair Makeup."""
+            if not (edit_button_is_checked_global and params["HairMakeupEnableToggle"]):
+                return img
+            data = {
+                **makeup_params_for(target, params, control),
+                "FaceMakeupEnableToggle": False,
+                "EyeBrowsMakeupEnableToggle": False,
+                "LipsMakeupEnableToggle": False,
+            }
+            return self.worker.function_worker.swap_edit_face_core_makeup(
+                img,
+                fface["kps_5"],
+                data,
+                control,
+                hair_cache=hair_cache_for(fface, target, params),
+                other_kps=other_faces_kps(fface),
+                **hair_edit_for(fface, target),
+            )
 
         # --- DETECTION PHASE ---
         # The workers are now "Stateless Render Engines". They no longer track time or state.
@@ -551,7 +575,15 @@ class StandardProcessor:
                 ):
                     continue
 
-                if cached_face is not None and cached_face["embedding"] is not None:
+                hair_only = bool(
+                    cached_face is not None and cached_face.get("hair_only")
+                )
+                if hair_only:
+                    # Back of Head box: no face to recognise, only its assigned target.
+                    if not cached_face.get("assigned_face_id"):  # type: ignore[union-attr]
+                        continue
+                    face_emb = None
+                elif cached_face is not None and cached_face["embedding"] is not None:
                     face_emb = cached_face["embedding"]
                 else:
                     similarity_type = str("Auto")
@@ -579,6 +611,7 @@ class StandardProcessor:
                         "swap_mask": None,
                         "matched_target": None,
                         "alignment_index": i if cached_face is not None else None,
+                        "hair_only": hair_only,
                         "assigned_face_id": cached_face.get("assigned_face_id")
                         if cached_face is not None
                         else None,
@@ -653,6 +686,16 @@ class StandardProcessor:
                     if best_fface is not None and (
                         swap_button_is_checked_global or edit_button_is_checked_global
                     ):
+                        if best_fface.get("hair_only"):
+                            try:
+                                img = hair_only_makeup(
+                                    img, best_fface, target_face, params
+                                )
+                            except Exception as e:
+                                print(
+                                    f"[ERROR] Standard mode Hair Makeup failed for a Back of Head box: {e}"
+                                )
+                            continue
                         denoiser_on = (
                             control.get(
                                 "DenoiserUNetEnableBeforeRestorersToggle", False
@@ -802,6 +845,14 @@ class StandardProcessor:
                     if best_target and (
                         swap_button_is_checked_global or edit_button_is_checked_global
                     ):
+                        if fface.get("hair_only"):
+                            try:
+                                img = hair_only_makeup(img, fface, best_target, params)
+                            except Exception as e:
+                                print(
+                                    f"[ERROR] Standard mode Hair Makeup failed for a Back of Head box: {e}"
+                                )
+                            continue
                         denoiser_on = (
                             control.get(
                                 "DenoiserUNetEnableBeforeRestorersToggle", False
@@ -1118,7 +1169,7 @@ class StandardProcessor:
         """Detects landmarks for manual faces that were added as a bare bbox."""
         store = self.worker.main_window.alignments
         for idx, face in enumerate(faces):
-            if not face.get("refine"):
+            if not face.get("refine") or face.get("hair_only"):
                 continue
             kpss_5, kpss, _ = self.worker.function_worker.run_detect_landmark(
                 img,
@@ -1164,7 +1215,11 @@ class StandardProcessor:
                 and fface.get("embedding") is not None
             ):
                 updates["embedding"] = fface["embedding"]
-            if needs_203 and fface.get("kps_203") is None:
+            if (
+                needs_203
+                and fface.get("kps_203") is None
+                and not fface.get("hair_only")
+            ):
                 _, lm_203, _ = self.worker.function_worker.run_detect_landmark(
                     img,
                     fface["bbox"],

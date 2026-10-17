@@ -125,6 +125,18 @@ def test_floating_alignment_bar(monkeypatch):
     eta.populate_assign_menu(main_window, menu)
     assert [a.text() for a in menu.actions()] == ["No target faces"]
 
+    assert not buttons["draw_back_of_head"].isChecked()
+    buttons["draw_back_of_head"].click()
+    assert main_window.alignment_draw_back_of_head is True
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    actions = {a.text().split("\t")[0]: a for a in menu.actions()}
+    assert actions["Back of Head"].isCheckable()
+    assert not actions["Back of Head"].isChecked()
+    aea.set_back_of_head(main_window, 2, 0, True, "t1")
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    actions = {a.text().split("\t")[0]: a for a in menu.actions()}
+    assert actions["Back of Head"].isChecked()
+
     main_window.alignment_edit_enabled = False
     eta.sync_alignment_bar(main_window)
     assert bar.isHidden()

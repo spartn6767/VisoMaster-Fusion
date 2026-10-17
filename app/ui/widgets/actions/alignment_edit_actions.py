@@ -53,6 +53,8 @@ _OVERLAY_ATTR = "_alignment_edit_items"
 _RUBBER_BAND_ATTR = "_alignment_rubber_band"
 _CLIPBOARD_ATTR = "alignment_clipboard"
 ACTIVE_FACE_ATTR = "_alignment_active_face"
+# Bar toggle: boxes drawn while it's on are Back of Head boxes.
+DRAW_BACK_OF_HEAD_ATTR = "alignment_draw_back_of_head"
 # Tag (item data key 0) for overlay pixmaps that must not be taken for the frame.
 OVERLAY_ITEM_TAG = "viewer_overlay"
 
@@ -291,17 +293,21 @@ def _frame_faces(main_window: "MainWindow", frame_number: int) -> list[dict]:
 
 @records_edit
 def add_manual_face(
-    main_window: "MainWindow", frame_number: int, bbox: np.ndarray
+    main_window: "MainWindow",
+    frame_number: int,
+    bbox: np.ndarray,
+    back_of_head_target: Optional[str] = None,
 ) -> int:
-    """Adds a face from a normalised bbox; the worker detects its landmarks."""
+    """Adds a face from a normalised bbox; the worker detects its landmarks.
+    With ``back_of_head_target`` it is a Back of Head box assigned to that target."""
     store = main_window.alignments
     store.bind_media(main_window.video_processor.media_path)
-    index = store.add_face(
-        frame_number,
-        {"bbox": bbox, "kps_5": template_kps_for_bbox(bbox), "refine": True},
-        1,
-        1,
-    )
+    face: dict[str, Any] = {"bbox": bbox, "kps_5": template_kps_for_bbox(bbox)}
+    if back_of_head_target is None:
+        face["refine"] = True
+    else:
+        face.update(hair_only=True, assigned_face_id=back_of_head_target)
+    index = store.add_face(frame_number, face, 1, 1)
     _refresh(main_window)
     return index
 
@@ -484,6 +490,99 @@ def assign_target(
         return False
     _refresh(main_window)
     return True
+
+
+def pick_back_of_head_target(
+    main_window: "MainWindow", current: Optional[str] = None
+) -> Optional[str]:
+    """Target whose Hair Makeup a Back of Head box uses: its current assignment,
+    the only target face, or the user's pick. None if there is none or they cancel."""
+    targets = getattr(main_window, "target_faces", None) or {}
+    ids = [str(getattr(t, "face_id", k)) for k, t in targets.items()]
+    if current in ids:
+        return current
+    if not ids:
+        QtWidgets.QMessageBox.information(
+            cast(QtWidgets.QWidget, main_window),
+            "Back of Head",
+            "Add a target face first: a Back of Head box uses that target's "
+            "Hair Makeup.",
+        )
+        return None
+    if len(ids) == 1:
+        return ids[0]
+    labels = [
+        f"{n}. {_target_label(t, n)}" for n, t in enumerate(targets.values(), start=1)
+    ]
+    parameters = getattr(main_window, "parameters", None) or {}
+    default = next(
+        (
+            i
+            for i, face_id in enumerate(ids)
+            if (parameters.get(face_id) or {}).get("HairMakeupEnableToggle")
+        ),
+        0,
+    )
+    label, ok = QtWidgets.QInputDialog.getItem(
+        cast(QtWidgets.QWidget, main_window),
+        "Back of Head",
+        "Use the Hair Makeup of:",
+        labels,
+        default,
+        False,
+    )
+    return ids[labels.index(label)] if ok and label in labels else None
+
+
+@records_edit
+def set_back_of_head(
+    main_window: "MainWindow",
+    frame_number: int,
+    face_index: int,
+    on: bool,
+    target_face_id: Optional[str] = None,
+) -> bool:
+    """Makes a face a Back of Head box (points placed from its box, assigned to
+    ``target_face_id``), or a normal face again whose landmarks get re-detected."""
+    faces = _frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return False
+    face = faces[face_index]
+    updates: dict[str, Any] = {
+        "hair_only": on,
+        "source": SOURCE_MANUAL,
+        "embedding": None,
+        "kps_all": None,
+        "kps_203": None,
+        "hair_prob": None,
+        "refine": not on,
+    }
+    if on:
+        updates["kps_5"] = template_kps_for_bbox(face["bbox"])
+        updates["assigned_face_id"] = target_face_id or face.get("assigned_face_id")
+    if not main_window.alignments.update_face(
+        frame_number, face_index, 1, 1, **updates
+    ):
+        return False
+    _refresh(main_window)
+    return True
+
+
+def toggle_back_of_head(
+    main_window: "MainWindow", frame_number: int, face_index: int
+) -> bool:
+    """Face menu > Back of Head: switches the face between the two kinds,
+    asking which target to use when it has none."""
+    faces = _frame_faces(main_window, frame_number)
+    if not 0 <= face_index < len(faces):
+        return False
+    face = faces[face_index]
+    if face.get("hair_only"):
+        return set_back_of_head(main_window, frame_number, face_index, False)
+    target = pick_back_of_head_target(main_window, face.get("assigned_face_id"))
+    if target is None:
+        return False
+    return set_back_of_head(main_window, frame_number, face_index, True, target)
 
 
 def add_as_target_face(
@@ -858,8 +957,13 @@ def refresh_alignment_overlay(main_window: "MainWindow") -> None:
     items: list[QtWidgets.QGraphicsItem] = []
     for face_index, face in enumerate(_frame_faces(main_window, frame_number)):
         manual = face.get("source") == SOURCE_MANUAL
+        back_of_head = bool(face.get("hair_only"))
         pen = QtGui.QPen(
-            QtGui.QColor(0, 220, 120) if manual else QtGui.QColor(255, 200, 0)
+            QtGui.QColor(200, 120, 255)
+            if back_of_head
+            else QtGui.QColor(0, 220, 120)
+            if manual
+            else QtGui.QColor(255, 200, 0)
         )
         pen.setCosmetic(True)
         pen.setWidth(2)
@@ -877,15 +981,19 @@ def refresh_alignment_overlay(main_window: "MainWindow") -> None:
         box.setPen(pen)
         scene.addItem(box)
         assigned = face.get("assigned_face_id")
-        if assigned:
+        if assigned or back_of_head:
             targets = getattr(main_window, "target_faces", None) or {}
             target = targets.get(assigned)
             number = list(targets).index(assigned) + 1 if target is not None else 0
-            tag = QtWidgets.QGraphicsSimpleTextItem(
+            text = (
                 f"-> {_target_label(target, number)}"
                 if target is not None
-                else "-> removed target",
-                box,
+                else "-> removed target"
+                if assigned
+                else "-> no target"
+            )
+            tag = QtWidgets.QGraphicsSimpleTextItem(
+                f"Back of Head {text}" if back_of_head else text, box
             )
             tag.setBrush(pen.color())
             tag.setFlag(
@@ -968,7 +1076,14 @@ def handle_mouse_release(
         _to_normalized(rect, start.x(), start.y()),
         _to_normalized(rect, end.x(), end.y()),
     )
-    add_manual_face(main_window, current_frame_number(main_window), np.clip(bbox, 0, 1))
+    target = None
+    if getattr(main_window, DRAW_BACK_OF_HEAD_ATTR, False):
+        target = pick_back_of_head_target(main_window)
+        if target is None:
+            return True
+    add_manual_face(
+        main_window, current_frame_number(main_window), np.clip(bbox, 0, 1), target
+    )
     return True
 
 

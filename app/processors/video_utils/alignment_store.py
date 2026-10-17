@@ -185,6 +185,9 @@ class AlignmentFace:
     # Cached face-parser hair probability (uint8, HAIR_PROB_SIZE square) in the
     # makeup crop; only filled when hair mask stabilization is on.
     hair_prob: Optional[np.ndarray] = None
+    # Back of Head box: no face to swap, only Hair Makeup runs on it. Its points
+    # come from the box (not the landmark detector) and it needs an assigned target.
+    hair_only: bool = False
     # Manual bbox whose landmarks the worker still has to detect (not persisted).
     refine: bool = False
 
@@ -206,6 +209,7 @@ class AlignmentFace:
             "hair_mask": None if self.hair_mask is None else self.hair_mask.copy(),
             "hair_mask_skip": self.hair_mask_skip,
             "hair_prob": self.hair_prob,
+            "hair_only": self.hair_only,
             "refine": self.refine,
         }
 
@@ -240,6 +244,7 @@ class AlignmentFace:
             hair_mask=as_mask(face.get("hair_mask"), HAIR_SPACE),
             hair_mask_skip=bool(face.get("hair_mask_skip", False)),
             hair_prob=_as_hair_prob(face.get("hair_prob")),
+            hair_only=bool(face.get("hair_only", False)),
             refine=bool(face.get("refine", False)),
         )
 
@@ -960,6 +965,7 @@ class AlignmentStore:
         hair_masks: list[np.ndarray] = []
         hair_index: list[int] = []
         hair_probs: list[np.ndarray] = []
+        hair_only: list[bool] = []
 
         for fi, frame_number in enumerate(frame_numbers):
             frame = self._frames[frame_number]
@@ -993,6 +999,7 @@ class AlignmentStore:
                 else:
                     mask_index.append(-1)
                 hair_mask_skip.append(face.hair_mask_skip)
+                hair_only.append(face.hair_only)
                 if face.hair_mask is not None:
                     hair_mask_index.append(len(hair_masks))
                     hair_masks.append(face.hair_mask)
@@ -1047,6 +1054,7 @@ class AlignmentStore:
                 if hair_masks
                 else np.empty((0, 2, HAIR_SPACE.size, HAIR_SPACE.size), np.uint8)
             ),
+            "hair_only": np.asarray(hair_only, dtype=bool),
             "hair_index": np.asarray(hair_index, dtype=np.int64),
             "hair_probs": (
                 np.stack(hair_probs).astype(np.uint8)
@@ -1076,6 +1084,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
     hair_mask_index = data["hair_mask_index"] if has_hair_masks else None
     hair_masks = data["hair_masks"] if has_hair_masks else None
     hair_mask_skip = data["hair_mask_skip"] if has_hair_masks else None
+    hair_only = data["hair_only"] if "hair_only" in data.files else None
     has_hair = "hair_index" in data.files
     hair_index = data["hair_index"] if has_hair else None
     hair_probs = data["hair_probs"] if has_hair else None
@@ -1111,6 +1120,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
                 hair_prob=_as_hair_prob(hair_probs[h])
                 if hair_probs is not None and h >= 0
                 else None,
+                hair_only=bool(hair_only[i]) if hair_only is not None else False,
             )
         )
     return frames

@@ -27,6 +27,7 @@ Right-click inside a face's box. The menu only has actions for that face; the ke
 | < Paste / Paste > (Z / X) | Pastes the face from the nearest earlier / later frame with stored alignments. Press the key again to try the next frame (see below). |
 | Assign to Target | Pins the face to a target face, skipping the usual look-alike matching for it on this frame. |
 | Add as Target | Creates a target face from the face. |
+| Back of Head | Turns the box into a Back of Head box (ticked), or back into a normal face. See below. |
 | Delete Face (M) | Deletes the face from this frame. |
 | Fill Between Edits | Blends the face between the previous frame you edited it on and this frame. See below. |
 | Switch to Paint Mask | Turns on Paint Mask with this face selected. |
@@ -43,6 +44,22 @@ The floating bar has the actions that aren't about one face.
 | Re-detect Frame | Drops this frame's stored faces, including manual edits and painted masks, so the frame is detected again. |
 | Reset All Alignments | Discards every stored alignment in the video (asks first). |
 | Find Frames to Check | Marks frames worth a look in pink on the seek bar. See below. |
+| Draw Back of Head | While it's on, boxes you draw are Back of Head boxes. See below. |
+
+## Back of the head
+
+When someone turns away from the camera there's no face to detect, so Hair Makeup stops on those frames. A **Back of Head** box keeps the hair colored:
+
+- **Hair only:** no face is swapped onto the box. Only Hair Makeup runs, with its target face's settings. Face, eyebrow and lip makeup are skipped.
+- **Points from the box:** its 5 points are placed from the box shape, as if a face looked at the camera (the landmark detector would guess wrong on the back of a head). The Hair Area is placed from these points, so draw the box around the whole head. You can still drag the points.
+- **Target face:** the box needs one, because there's no face to match. With a single target face it's used automatically; otherwise you're asked which one (the first with Hair Makeup on is suggested). With no target face, add one first.
+- **How to make one:** turn on **Draw Back of Head** on the bar and drag around the head, or right-click an existing box and choose **Back of Head**. Choosing it again turns the box back into a normal face, whose landmarks are then detected again.
+- **In the viewer** the box is purple and labelled "Back of Head -> target".
+- **Paint Mask > Hair Mask** works on it like on any face.
+
+Like other alignment edits, a Back of Head box is stored on its own frame only. For a turn that lasts several frames, add one on the first and last frame, then use **Fill Between Edits** on the last one. For example, if the person faces away from frame 300 to 360: draw a Back of Head box on 300 and on 360, then right-click the box on 360 and choose Fill Between Edits.
+
+**When the head fills most of the picture,** the Hair Segmenter can miss the hair: the area it searches reaches far beyond the picture, so the head looks tiny to it. Face Parser or a tighter box may do better.
 
 ## Autosave
 

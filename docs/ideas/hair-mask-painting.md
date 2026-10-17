@@ -1,6 +1,6 @@
 # Idea: paint the hair mask like the swap mask
 
-**Status:** hair-mask painting built (Paint Mask > Hair Mask, see `docs/wiki/paint-mask.md`); the Back of Head box type is not started. Builds on Paint Mask (#5), natural hair recolor / Hair Segmenter (#7) and the Paint Mask improvements in #18.
+**Status:** hair-mask painting built (Paint Mask > Hair Mask, see `docs/wiki/paint-mask.md`); the Back of Head box type is built too (see "Back of the head" in `docs/wiki/edit-alignments.md`). Builds on Paint Mask (#5), natural hair recolor / Hair Segmenter (#7) and the Paint Mask improvements in #18.
 
 ## Problem
 Hair Makeup recolors whatever the hair mask covers. That mask is computed fresh on every frame by Face Parser or Hair Segmenter. When it misses hair (thin ends, highlights, random holes) or tints the wrong thing (shoulders, background, a neighbour's hair), the only fixes are the sliders (Mask Threshold, Edge Softness, Strand Refinement, area size). Sliders act on every frame at once. Paint Mask edits only the swap mask, not the hair mask.
