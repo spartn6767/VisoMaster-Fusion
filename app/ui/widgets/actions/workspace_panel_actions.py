@@ -204,15 +204,17 @@ def install_workspace_panel(main_window: Any) -> QtWidgets.QWidget:
     toggle.toggled.connect(toggled)
     dock = getattr(main_window, "input_Target_DockWidget", None)
     if isinstance(dock, QtWidgets.QDockWidget):
-        # Above the dock's "Target Videos" title, so Target Videos sits below it.
+        # The section replaces the dock's title bar; the "Target Videos" title
+        # moves into the panel below it.
         title_bar = QtWidgets.QWidget(dock)
         column = QtWidgets.QVBoxLayout(title_bar)
         column.setContentsMargins(6, 4, 6, 2)
-        column.setSpacing(2)
         panel.setParent(title_bar)
         column.addWidget(panel)
-        column.addWidget(QtWidgets.QLabel(dock.windowTitle(), title_bar))
         dock.setTitleBarWidget(title_bar)
+        main_window.vboxLayout.insertWidget(
+            0, QtWidgets.QLabel(dock.windowTitle(), main_window.dockWidgetContents)
+        )
     else:
         main_window.vboxLayout.insertWidget(0, panel)
     for keys, save_as in (("Ctrl+S", False), ("Ctrl+Shift+S", True)):
