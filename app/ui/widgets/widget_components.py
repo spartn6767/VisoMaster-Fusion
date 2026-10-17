@@ -97,20 +97,6 @@ class TwoLineElidedLabel(QtWidgets.QLabel):
         super().setText(f"{first_line}\n{second_line}")
 
 
-def _no_image_pixmap(size: int = embedding_thumbnails.THUMBNAIL_SIZE) -> QtGui.QPixmap:
-    """Placeholder picture for embeddings saved without one."""
-    pixmap = QtGui.QPixmap(size, size)
-    pixmap.fill(QtGui.QColor("#3a3a3a"))
-    painter = QtGui.QPainter(pixmap)
-    painter.setPen(QtGui.QColor("#b0b0b0"))
-    font = painter.font()
-    font.setPixelSize(size // 5)
-    painter.setFont(font)
-    painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "no img")
-    painter.end()
-    return pixmap
-
-
 class CardButton(QPushButton):
     def __init__(self, *args, **kwargs):
         self.main_window = kwargs.pop("main_window", None)
@@ -1880,7 +1866,11 @@ class EmbeddingCardButton(CardButton):
         pixmap = QtGui.QPixmap()
         data = embedding_thumbnails.thumbnail_bytes(self.thumbnail)
         if not (data and pixmap.loadFromData(data)):
-            pixmap = _no_image_pixmap()
+            pixmap.loadFromData(
+                embedding_thumbnails.thumbnail_bytes(
+                    embedding_thumbnails.no_image_thumbnail()
+                )
+            )
         self.setText("")
         self.setIcon(QtGui.QIcon(pixmap))
 

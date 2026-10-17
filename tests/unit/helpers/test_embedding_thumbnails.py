@@ -70,7 +70,7 @@ def test_describe_merge_and_tooltip():
     assert et.describe_merge("Mean", 1) == "Made from 1 face"
     assert et.describe_merge(None, None) == ""
     plain = et.tooltip_text("Bob", None, None, None)
-    assert "no img" in plain and "<b>Bob</b>" in plain
+    assert et.no_image_thumbnail() in plain and "<b>Bob</b>" in plain
     assert "Picture:" not in plain
     assert "Includes K/V Maps" in et.tooltip_text("Bob", None, None, None, True)
     thumb = et.encode_thumbnail(np.zeros((10, 10, 3), np.uint8))

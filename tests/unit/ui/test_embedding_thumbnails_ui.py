@@ -28,7 +28,7 @@ def test_embedding_card_shows_picture_and_details(qapp):
     )
     assert not button.icon().isNull()
     assert button.text() == ""
-    assert "no img" in button.toolTip()
+    assert embedding_thumbnails.no_image_thumbnail() in button.toolTip()
 
     button.set_creation_details(
         {"thumbnail": _thumbnail(), "merge_method": "Median", "source_count": 6}

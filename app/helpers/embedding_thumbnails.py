@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import html
+from functools import lru_cache
 from typing import Any, Mapping, Sequence
 
 import cv2
@@ -62,6 +63,21 @@ def encode_thumbnail(face_bgr: np.ndarray | None) -> str | None:
     return base64.b64encode(buffer.tobytes()).decode("ascii") if ok else None
 
 
+@lru_cache(maxsize=1)
+def no_image_thumbnail() -> str:
+    """Placeholder picture for embeddings saved without one."""
+    image = np.full((THUMBNAIL_SIZE, THUMBNAIL_SIZE, 3), 58, np.uint8)
+    text, font, scale, thickness = "no img", cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1
+    (width, height), _ = cv2.getTextSize(text, font, scale, thickness)
+    origin = ((THUMBNAIL_SIZE - width) // 2, (THUMBNAIL_SIZE + height) // 2)
+    cv2.putText(
+        image, text, origin, font, scale, (176, 176, 176), thickness, cv2.LINE_AA
+    )
+    encoded = encode_thumbnail(image)
+    assert encoded is not None
+    return encoded
+
+
 def thumbnail_bytes(thumbnail: Any) -> bytes | None:
     if not isinstance(thumbnail, str) or not thumbnail:
         return None
@@ -102,18 +118,11 @@ def tooltip_text(
 ) -> str:
     description = describe_merge(merge_method, source_count)
     has_picture = thumbnail_bytes(thumbnail) is not None
-    if has_picture:
-        picture = (
-            f'<img src="data:image/jpeg;base64,{html.escape(thumbnail)}" '
-            f'width="{THUMBNAIL_SIZE}" height="{THUMBNAIL_SIZE}">'
-        )
-    else:
-        picture = (
-            '<table border="1" cellspacing="0"><tr>'
-            f'<td width="{THUMBNAIL_SIZE}" height="{THUMBNAIL_SIZE}" '
-            'align="center" valign="middle">no img</td></tr></table>'
-        )
-    parts = [picture]
+    shown = thumbnail if has_picture else no_image_thumbnail()
+    parts = [
+        f'<img src="data:image/jpeg;base64,{html.escape(shown)}" '
+        f'width="{THUMBNAIL_SIZE}" height="{THUMBNAIL_SIZE}">'
+    ]
     parts.append(f"<b>{html.escape(name)}</b>")
     if description:
         parts.append(html.escape(description))
