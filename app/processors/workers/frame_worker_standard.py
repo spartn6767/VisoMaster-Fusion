@@ -258,10 +258,12 @@ class StandardProcessor:
             target_id = getattr(target, "face_id", None)
             out: dict[str, Any] = {
                 "edit_kps": np.asarray(fface["kps_5"], dtype=np.float64)[:5],
+                # A stored face holds masks by its own face_id, exactly as Paint Mask
+                # shows them; only a fresh detection falls back to the target's id.
                 "hair_edit": alignment_store.effective_mask(
                     alignment_frame,
                     None if index is None else int(index),
-                    None if target_id is None else str(target_id),
+                    None if index is not None or target_id is None else str(target_id),
                     layer="hair_mask",
                 ),
             }
