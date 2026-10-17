@@ -707,15 +707,32 @@ def recolor_hair_in_frame(
         )
     else:
         placed = _parser_frame_mask(img, kps, parameters, parser_logits, hair_cache)
-    if edit_kps is not None:
-        if capture is not None:
-            captured = capture_hair_mask(placed, edit_kps)
-            if captured is not None:
-                capture.append(captured)
-        if hair_edit is not None:
-            placed = apply_hair_edit(
-                placed, hair_edit, edit_kps, img.shape[-2:], img.device
-            )
+
+    def as_u8(t: torch.Tensor) -> torch.Tensor:
+        return t if t.dtype == torch.uint8 else t.round().clamp(0, 255).to(torch.uint8)
+
+    if edit_kps is not None and capture is not None:
+        captured = capture_hair_mask(placed, edit_kps)
+        if captured is not None:
+            capture.append(captured)
+    refine_radius = int(parameters.get("HairMakeupStrandRefineSlider", 0))
+    if placed is not None and refine_radius > 0:
+        # The slider is in 512px-crop pixels; scale it to frame pixels. Only the
+        # computed mask is refined; painted edits below are used as painted.
+        mask, (top, bottom, left, right), frame_px = placed
+        placed = (
+            guided_refine_mask(
+                as_u8(img[:, top:bottom, left:right]),
+                mask,
+                max(1, int(round(refine_radius * frame_px))),
+            ),
+            (top, bottom, left, right),
+            frame_px,
+        )
+    if edit_kps is not None and hair_edit is not None:
+        placed = apply_hair_edit(
+            placed, hair_edit, edit_kps, img.shape[-2:], img.device
+        )
     if placed is None:
         return img
     frame_mask, (top, bottom, left, right), frame_px = placed
@@ -723,15 +740,7 @@ def recolor_hair_in_frame(
         return img
 
     roi = img[:, top:bottom, left:right]
-    roi_u8 = (
-        roi if roi.dtype == torch.uint8 else roi.round().clamp(0, 255).to(torch.uint8)
-    )
-    refine_radius = int(parameters.get("HairMakeupStrandRefineSlider", 0))
-    if refine_radius > 0:
-        # The slider is in 512px-crop pixels; scale it to frame pixels.
-        frame_mask = guided_refine_mask(
-            roi_u8, frame_mask, max(1, int(round(refine_radius * frame_px)))
-        )
+    roi_u8 = as_u8(roi)
     color = [
         parameters.get("HairMakeupRedSlider", 0),
         parameters.get("HairMakeupGreenSlider", 0),

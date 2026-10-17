@@ -50,9 +50,9 @@ SWAP_SPACE = MaskSpace(MASK_SIZE, CANONICAL_KPS)
 # Hair edits use a head-and-shoulders canvas: HAIR_AREA_UNITS face units across
 # (a face unit is the eye-to-mouth distance), eyes HAIR_EYES_Y down from the top.
 # It only depends on the 5 keypoints, never on the Hair Area sliders.
-HAIR_MASK_SIZE = 384
-HAIR_AREA_UNITS = 10.0
-HAIR_EYES_Y = 0.35
+HAIR_MASK_SIZE = 512
+HAIR_AREA_UNITS = 16.0
+HAIR_EYES_Y = 0.22
 _EYES = _ARCFACE_TEMPLATE[:2].mean(axis=0)
 _FACE_UNIT = float(np.linalg.norm(_ARCFACE_TEMPLATE[3:5].mean(axis=0) - _EYES))
 HAIR_SPACE = MaskSpace(
