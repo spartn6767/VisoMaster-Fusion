@@ -28,7 +28,7 @@ Single-letter shortcuts don't work while a text box (such as search) has focus. 
 
 ## Edit Alignments and Paint Mask
 
-While either mode is on, these keys replace their usual action and work on the selected face, like the bar buttons. Turning a mode on gives the preview keyboard focus; if a key doesn't respond (for example after typing in a number box), click the preview.
+While either mode is on, these keys replace their usual action and work on the selected face (the last one you right-clicked, dragged or painted), like the right-click face menu. Turning a mode on gives the preview keyboard focus; if a key doesn't respond (for example after typing in a number box), click the preview.
 
 | Key | Edit Alignments | Paint Mask |
 |---|---|---|
@@ -44,7 +44,7 @@ While either mode is on, these keys replace their usual action and work on the s
 
 ## Mouse with keys
 
-- **Viewer:** the wheel zooms; Shift+wheel switches to the next/previous embedding; middle-drag pans; right-click opens the viewport menu.
+- **Viewer:** the wheel zooms; Shift+wheel switches to the next/previous embedding; middle-drag pans; right-click opens the viewport menu. In Edit Alignments and Paint Mask, right-clicking inside a face box opens that face's menu (Copy, Paste, Delete Face / Reset Frame...) instead.
 - **Edit Alignments:** drag on an empty area to draw a face box; double-click to copy the earlier frame's face there (or onto the box you double-click), or draw a box centred on the click if no earlier face is near.
 - **Paint Mask:** drag to paint (a click alone paints nothing); hold Shift while painting to erase. Double-click to paste the earlier frame's mask onto the face there, or the earlier face with its mask where the frame has none. A circle around the pointer shows the brush size; the dashed inner circle shows where the feathered edge starts.
 - **Input face and merged embedding cards:** Ctrl+click assigns several to a face; Shift+click selects a range of input faces.

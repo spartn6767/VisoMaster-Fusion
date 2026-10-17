@@ -1673,6 +1673,14 @@ def zoom_current_image_100(main_window: "MainWindow"):
 def show_graphics_view_context_menu(
     main_window: "MainWindow", global_pos: QtCore.QPoint
 ):
+    from app.ui.widgets.actions import edit_toolbar_actions
+
+    view = main_window.graphicsViewFrame
+    menu_scene_pos = view.mapToScene(view.viewport().mapFromGlobal(global_pos))
+    face_menu = edit_toolbar_actions.face_context_menu(main_window, menu_scene_pos)
+    if face_menu is not None:
+        face_menu.exec(global_pos)
+        return
     menu = QtWidgets.QMenu(main_window.graphicsViewFrame)
     viewer_mode_actions_enabled = bool(
         getattr(main_window, "viewer_mode_actions_enabled", True)
@@ -1704,18 +1712,7 @@ def show_graphics_view_context_menu(
         mask_actions[action] = option
     menu.addSeparator()
     save_action = menu.addAction("Save Image")
-    view = main_window.graphicsViewFrame
-    menu_scene_pos = view.mapToScene(view.viewport().mapFromGlobal(global_pos))
-    alignment_handlers = alignment_edit_actions.add_context_menu_actions(
-        main_window, menu, menu_scene_pos
-    )
-    alignment_handlers.update(
-        mask_paint_actions.add_context_menu_actions(main_window, menu, menu_scene_pos)
-    )
     selected_action = menu.exec(global_pos)
-    if selected_action in alignment_handlers:
-        alignment_handlers[selected_action]()
-        return
     if selected_action is fit_action:
         fit_view_to_current_image(main_window)
     elif selected_action is zoom_100_action:

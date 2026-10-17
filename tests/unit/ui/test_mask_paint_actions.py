@@ -469,3 +469,27 @@ def test_double_click_far_from_faces_draws_centred_box(main_window):
     assert mpa.paste_or_add_mask_at(main_window, 5, 0.9, 0.9) == 0
     bbox = store.get(5, 1, 1, None)[0]["bbox"]
     assert np.allclose(bbox, [0.65, 0.625, 1.0, 1.0])
+
+
+def test_face_menu_in_paint_mask(main_window, monkeypatch):
+    from PySide6 import QtWidgets
+
+    from app.ui.widgets.actions import edit_toolbar_actions as eta
+
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    monkeypatch.setattr(aea, "is_alignment_edit_active", lambda mw: False)
+    monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: True)
+    monkeypatch.setattr(mpa, "refresh_mask_overlay", lambda mw: None)
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 1)
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+
+    assert eta.face_menu_at(main_window, None, 0.9, 0.9) is None
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    actions = {a.text().split("\t")[0]: a for a in menu.actions()}
+    assert list(actions) == [t for _, t, _ in mpa.FACE_ACTIONS]
+    assert actions["Reset Frame"].text() == "Reset Frame\tM"
+    assert actions["Copy Mask"].isEnabled() and not actions["Paste Mask"].isEnabled()
+    actions["Copy Mask"].trigger()
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    actions = {a.text().split("\t")[0]: a for a in menu.actions()}
+    assert actions["Paste Mask"].isEnabled()

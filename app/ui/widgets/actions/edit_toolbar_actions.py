@@ -1,7 +1,7 @@
-"""Toolbar above the media buttons for the Edit Alignments / Paint Mask modes.
+"""Edit toolbar above the media buttons, the floating Edit Alignments bar and the
+right-click menu on a face box in Edit Alignments / Paint Mask.
 
-Mirrors the viewer's right-click menu for the frame-wide actions; per-face actions
-stay in the menu because they need a face under the cursor.
+The bars carry frame-wide actions; actions on one face live in the face menu.
 """
 
 import os
@@ -271,12 +271,9 @@ def _build_alignment_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     bar.setStyleSheet(
         "#alignmentEditBar { background: rgba(20, 20, 20, 200); border-radius: 4px; }"
     )
-    rows = QtWidgets.QVBoxLayout(bar)
-    rows.setContentsMargins(6, 4, 6, 4)
-    rows.setSpacing(4)
-    top, bottom = QtWidgets.QHBoxLayout(), QtWidgets.QHBoxLayout()
-    rows.addLayout(top)
-    rows.addLayout(bottom)
+    top = QtWidgets.QHBoxLayout(bar)
+    top.setContentsMargins(6, 4, 6, 4)
+    top.setSpacing(4)
 
     def moved(point: QtCore.QPoint) -> None:
         bar.move(point)
@@ -285,33 +282,16 @@ def _build_alignment_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     top.addWidget(mpa._DragHandle(bar, moved))
     top.addWidget(QtWidgets.QLabel("Alignments", bar))
     buttons: dict[str, QtWidgets.QToolButton] = {}
-    for row, actions in (
-        (top, ALIGNMENT_FRAME_ACTIONS),
-        (bottom, ALIGNMENT_FACE_ACTIONS),
-    ):
-        for key, text, tip in actions:
-            button = QtWidgets.QToolButton(bar)
-            button.setText(text)
-            button.setToolTip(tip)
-            if key == "assign":
-                menu = QtWidgets.QMenu(button)
-                menu.aboutToShow.connect(
-                    lambda m=menu: populate_assign_menu(main_window, m)
-                )
-                button.setMenu(menu)
-                button.setPopupMode(
-                    QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup
-                )
-            else:
-                button.clicked.connect(
-                    lambda *_, k=key: alignment_bar_action(main_window, k)
-                )
-            row.addWidget(button)
-            buttons[key] = button
-            if key == "next":
-                label = mpa.paste_source_label(bar)
-                row.addWidget(label)
-                setattr(main_window, _ALIGN_PASTE_LABEL_ATTR, label)
+    for key, text, tip in ALIGNMENT_FRAME_ACTIONS:
+        button = QtWidgets.QToolButton(bar)
+        button.setText(text)
+        button.setToolTip(tip)
+        button.clicked.connect(lambda *_, k=key: alignment_bar_action(main_window, k))
+        top.addWidget(button)
+        buttons[key] = button
+    label = mpa.paste_source_label(bar)
+    top.addWidget(label)
+    setattr(main_window, _ALIGN_PASTE_LABEL_ATTR, label)
     top.addStretch(1)
     top.addWidget(
         mpa.close_bar_button(
@@ -343,6 +323,20 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
         return
     bar.move(mpa.clamp_bar_position(bar, bar.pos()))
     bar.raise_()
+    enabled = alignment_action_states(main_window)
+    for key, button in getattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, {}).items():
+        button.setEnabled(bool(enabled.get(key, False)))
+    label = getattr(main_window, _ALIGN_PASTE_LABEL_ATTR, None)
+    if label is not None:
+        label.setText(
+            mpa.paste_source_text(
+                main_window, "align", active_alignment_face(main_window)
+            )
+        )
+
+
+def alignment_action_states(main_window: "MainWindow") -> dict[str, bool]:
+    """Which bar and face-menu actions apply to the selected face."""
     store = main_window.alignments
     frame_number = aea.current_frame_number(main_window)
     face_index = active_alignment_face(main_window)
@@ -367,8 +361,69 @@ def sync_alignment_bar(main_window: "MainWindow") -> None:
             fill=bool(store.edited_frames())
             and store.edited_frames()[0] < frame_number - 1,
         )
-    for key, button in getattr(main_window, _ALIGN_BAR_BUTTONS_ATTR, {}).items():
-        button.setEnabled(bool(enabled.get(key, False)))
-    label = getattr(main_window, _ALIGN_PASTE_LABEL_ATTR, None)
-    if label is not None:
-        label.setText(mpa.paste_source_text(main_window, "align", face_index))
+    return enabled
+
+
+# --- Right-click menu on a face box ---------------------------------------------
+FACE_MENU_KEYS = {
+    "copy": "C",
+    "paste": "V",
+    "previous": "Z",
+    "next": "X",
+    "delete": "M",
+    "reset_frame": "M",
+}
+
+
+def face_menu_at(
+    main_window: "MainWindow",
+    parent: Optional[QtWidgets.QWidget],
+    x: float,
+    y: float,
+) -> Optional[QtWidgets.QMenu]:
+    """Menu of the actions for the face whose box contains (x, y) (normalised),
+    which it selects; None outside the edit modes or outside every box."""
+    actions: tuple[tuple[str, str, str], ...]
+    if aea.is_alignment_edit_active(main_window):
+        actions, run = ALIGNMENT_FACE_ACTIONS, alignment_bar_action
+        select, states = aea.select_face, alignment_action_states
+    elif mpa.is_mask_paint_active(main_window):
+        actions, run = mpa.FACE_ACTIONS, mpa.toolbar_action
+        select, states = mpa.set_active_face, mpa.action_states
+    else:
+        return None
+    frame_number = aea.current_frame_number(main_window)
+    face_index = aea.face_index_at(aea._frame_faces(main_window, frame_number), x, y)
+    if face_index is None:
+        return None
+    select(main_window, frame_number, face_index)
+    sync_alignment_bar(main_window)
+    mpa._sync_bar_buttons(main_window)
+    enabled = states(main_window)
+    menu = QtWidgets.QMenu(parent)
+    menu.setToolTipsVisible(True)
+    for key, text, tip in actions:
+        if key == "assign":
+            action = menu.addMenu(text).menuAction()
+            populate_assign_menu(main_window, action.menu())
+        else:
+            shortcut = FACE_MENU_KEYS.get(key)
+            action = menu.addAction(f"{text}\t{shortcut}" if shortcut else text)
+            action.triggered.connect(lambda *_, k=key: run(main_window, k))
+        action.setToolTip(tip)
+        action.setEnabled(bool(enabled.get(key, False)))
+    return menu
+
+
+def face_context_menu(
+    main_window: "MainWindow", scene_pos: QtCore.QPointF
+) -> Optional[QtWidgets.QMenu]:
+    """face_menu_at for a viewer scene position."""
+    rect = aea._pixmap_rect(main_window)
+    if rect is None:
+        return None
+    return face_menu_at(
+        main_window,
+        main_window.graphicsViewFrame,
+        *aea._to_normalized(rect, scene_pos.x(), scene_pos.y()),
+    )
