@@ -531,7 +531,8 @@ def test_hair_layer_is_painted_separately_from_swap_mask(main_window, monkeypatc
 def test_hair_overlay_uses_computed_hair_mask(main_window):
     mpa.set_layer(main_window, "hair_mask")
     computed = np.zeros((mm.HAIR_MASK_SIZE, mm.HAIR_MASK_SIZE), np.uint8)
-    computed[:40] = 255
+    eyes = int(mm.HAIR_MASK_SIZE * mm.HAIR_EYES_Y)
+    computed[eyes - 20 : eyes + 20] = 255  # a band at eye level, inside the frame
     main_window.computed_masks = {
         "media_path": "/v.mp4",
         "frame": 1,

@@ -27,7 +27,7 @@ In Hair Mask:
 
 - The overlay shows the hair mask Hair Makeup computed on the shown frame (Hair Makeup must be on for that face), with your painted additions and erasures on top.
 - The final hair mask is the computed mask plus what you painted, minus what you erased. Stabilize Hair Mask, Edge Softness and Strand Refinement only shape the computed mask; your strokes are used exactly as painted (softened only by the brush Feather).
-- You can paint anywhere in a large area around the head: from above the head down to about the default Hair Segmenter reach (8 face units below the eyes) and across its full width, including outside the Hair Area. That area follows the face's points, not the Hair Area sliders, so moving a slider never shifts what you painted.
+- You can paint anywhere in a large area around the head, including outside the Hair Area: about 6 face units above the eyes, 18 below and 12 to each side (a face unit is the eye-to-mouth distance, about a third of the face's height). That area follows the face's points, not the Hair Area sliders, so moving a slider never shifts what you painted.
 - Everything else works the same as for the swap mask: frames carry the last painted mask forward, and This Frame Only, the face menu, the keys and Undo / Redo all apply. Copy / Paste use a separate clipboard, and Reset All only clears painted hair masks.
 - Long hair moves on its own, separately from the face, so a mask carried to later frames can drift. Paint more keyframes where hair swings.
 

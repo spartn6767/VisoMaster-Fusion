@@ -666,11 +666,11 @@ def test_painted_hair_edit_adds_outside_and_erases_inside():
     from app.processors.hair_recolor import apply_hair_edit, capture_hair_mask
     from app.processors.video_utils import manual_masks as mm
 
-    kps = mm.HAIR_SPACE.kps / 2 + 20  # canvas covers frame pixels 20..(20 + size/2)
+    kps = mm.HAIR_SPACE.kps * (200 / mm.HAIR_MASK_SIZE) + 20  # canvas: 20..220
     size = mm.HAIR_MASK_SIZE
     edit = mm.empty_mask(mm.HAIR_SPACE)
     edit[mm.ADD_LAYER, : size // 4] = 255  # add along the top
-    edit[mm.ERASE_LAYER, int(size * 0.45) :] = 255  # erase from frame y ~135 down
+    edit[mm.ERASE_LAYER, int(size * 0.45) :] = 255  # erase from frame y 110 down
     computed = torch.ones(1, 40, 40)
     placed = (computed, (100, 140, 100, 140), 1.0)
     assert capture_hair_mask(placed, kps).max() == 255
@@ -679,9 +679,9 @@ def test_painted_hair_edit_adds_outside_and_erases_inside():
         placed, edit, kps, (300, 300), torch.device("cpu")
     )
     assert abs(top - 20) <= 1 and abs(left - 20) <= 1
-    assert bottom >= 20 + size // 2 - 1
+    assert bottom >= 219
     assert float(out[0, 30 - top, 100 - left]) > 0.9  # painted addition
-    assert float(out[0, 110 - top, 110 - left]) > 0.9  # computed hair kept
+    assert float(out[0, 104 - top, 110 - left]) > 0.9  # computed hair kept
     assert float(out[0, 139 - top, 110 - left]) < 0.1  # erased
 
     out, roi, _ = apply_hair_edit(None, edit, kps, (300, 300), torch.device("cpu"))
