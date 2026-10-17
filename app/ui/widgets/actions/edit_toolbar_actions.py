@@ -412,6 +412,11 @@ def face_menu_at(
             action.triggered.connect(lambda *_, k=key: run(main_window, k))
         action.setToolTip(tip)
         action.setEnabled(bool(enabled.get(key, False)))
+    if run is mpa.toolbar_action:
+        erase = bool(mpa.brush_settings(main_window)["erase"])
+        menu.addSeparator()
+        switch = menu.addAction("Switch to Paint" if erase else "Switch to Erase")
+        switch.triggered.connect(lambda *_: mpa.set_erase(main_window, not erase))
     return menu
 
 

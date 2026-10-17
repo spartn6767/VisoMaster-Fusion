@@ -28,6 +28,7 @@ _BAR_BUTTONS_ATTR = "_mask_bar_buttons"
 _PASTE_LABEL_ATTR = "_mask_paste_label"
 _PASTE_RUN_ATTR = "_paste_run"
 _CURSOR_ATTR = "_mask_brush_cursor"
+_ERASE_BOX_ATTR = "_mask_erase_box"
 _MIN_DRAG_PIXELS = 3  # screen pixels; a click without a drag paints nothing
 _ADD_RGB = (0, 220, 120)
 _ERASE_RGB = (255, 60, 60)
@@ -46,6 +47,18 @@ def brush_settings(main_window: "MainWindow") -> dict[str, Any]:
         brush = dict(DEFAULT_BRUSH)
         main_window.mask_brush = brush
     return brush
+
+
+def set_erase(main_window: "MainWindow", erase: bool) -> None:
+    """Brush erases (True) or paints (False); keeps the bar's Erase box in step."""
+    brush_settings(main_window)["erase"] = bool(erase)
+    box = getattr(main_window, _ERASE_BOX_ATTR, None)
+    if box is None:
+        return
+    try:
+        box.setChecked(bool(erase))
+    except RuntimeError:  # bar already deleted
+        setattr(main_window, _ERASE_BOX_ATTR, None)
 
 
 def is_mask_paint_active(main_window: "MainWindow") -> bool:
@@ -571,6 +584,7 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
     erase.setChecked(bool(brush["erase"]))
     erase.toggled.connect(lambda checked: brush.__setitem__("erase", bool(checked)))
     layout.addWidget(erase)
+    setattr(main_window, _ERASE_BOX_ATTR, erase)
 
     frame_only = QtWidgets.QCheckBox("This Frame Only", bar)
     frame_only.setChecked(bool(brush.get("frame_only", False)))
