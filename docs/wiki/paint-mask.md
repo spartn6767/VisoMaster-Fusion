@@ -52,6 +52,7 @@ The keys act on the selected face: the face you last painted or right-clicked, o
 | Reset From Here | Face menu | Stores an empty keyframe, so this frame uses the computed mask. | Later frames use the computed mask too, up to the next painted keyframe |
 | Apply to Range... | Face menu | Asks for a From and To frame (default: this frame up to the next marker) and gives the same person this face's mask on every stored frame in between. Painted keyframes inside the range are replaced. | Frames after the range keep the mask they showed before |
 | Switch to Erase / Switch to Paint | Face menu | Flips the brush between painting and erasing, the same as the bar's Erase box. | None |
+| Switch to Edit Alignments | Face menu | Turns on Edit Alignments with this face selected. | None |
 | Undo / Redo | Bar | Steps back / forward through your mask and alignment edits (Ctrl+Z / Ctrl+Shift+Z). | Later frames go back to what they carried before / after the step |
 | Reset All | Bar | Removes every painted mask in the video (asks first). Also on the edit toolbar as Reset All Masks. | All frames go back to the computed mask |
 

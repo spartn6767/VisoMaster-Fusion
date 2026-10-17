@@ -29,6 +29,7 @@ Right-click inside a face's box. The menu only has actions for that face; the ke
 | Add as Target | Creates a target face from the face. |
 | Delete Face (M) | Deletes the face from this frame. |
 | Fill Between Edits | Blends the face between the previous frame you edited it on and this frame. See below. |
+| Switch to Paint Mask | Turns on Paint Mask with this face selected. |
 
 The keys act on the selected face: the face you last right-clicked or dragged, or the only face on the frame.
 

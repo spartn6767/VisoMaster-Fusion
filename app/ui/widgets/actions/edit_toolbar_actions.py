@@ -412,12 +412,33 @@ def face_menu_at(
             action.triggered.connect(lambda *_, k=key: run(main_window, k))
         action.setToolTip(tip)
         action.setEnabled(bool(enabled.get(key, False)))
-    if run is mpa.toolbar_action:
+    paint = run is mpa.toolbar_action
+    menu.addSeparator()
+    if paint:
         erase = bool(mpa.brush_settings(main_window)["erase"])
-        menu.addSeparator()
         switch = menu.addAction("Switch to Paint" if erase else "Switch to Erase")
         switch.triggered.connect(lambda *_: mpa.set_erase(main_window, not erase))
+    mode = menu.addAction(
+        "Switch to Edit Alignments" if paint else "Switch to Paint Mask"
+    )
+    mode.triggered.connect(
+        lambda *_: _switch_edit_mode(main_window, not paint, frame_number, face_index)
+    )
     return menu
+
+
+def _switch_edit_mode(
+    main_window: "MainWindow", paint: bool, frame_number: int, face_index: int
+) -> None:
+    """Turns on the other edit mode with the same face selected."""
+    if paint:
+        mpa.set_mask_paint_mode(main_window, True)
+        mpa.set_active_face(main_window, frame_number, face_index)
+        mpa._sync_bar_buttons(main_window)
+    else:
+        aea.set_alignment_edit_mode(main_window, True)
+        aea.select_face(main_window, frame_number, face_index)
+        sync_alignment_bar(main_window)
 
 
 def face_context_menu(

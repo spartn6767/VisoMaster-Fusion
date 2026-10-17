@@ -103,7 +103,10 @@ def test_floating_alignment_bar(monkeypatch):
     menu = eta.face_menu_at(main_window, None, 0.7, 0.3)
     assert eta.active_alignment_face(main_window) == 1
     actions = {a.text().split("\t")[0]: a for a in menu.actions()}
-    assert list(actions) == [t for _, t, _ in eta.ALIGNMENT_FACE_ACTIONS]
+    assert list(actions) == [t for _, t, _ in eta.ALIGNMENT_FACE_ACTIONS] + [
+        "",
+        "Switch to Paint Mask",
+    ]
     assert actions["Copy"].text() == "Copy\tC"
     assert actions["Delete Face"].text() == "Delete Face\tM"
     assert actions["< Paste"].isEnabled() and not actions["Paste >"].isEnabled()
@@ -232,3 +235,26 @@ def test_face_menu_only_in_edit_modes(monkeypatch):
     monkeypatch.setattr(aea, "is_alignment_edit_active", lambda mw: False)
     monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: False)
     assert eta.face_menu_at(main_window, None, 0.3, 0.3) is None
+
+
+def test_face_menu_switches_edit_mode(monkeypatch):
+    main_window = _main_window()
+    main_window.alignments.put(
+        2, [{"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": [[0.2, 0.2]] * 5}], 1, 1, "sig"
+    )
+    modes: list[bool] = []
+    monkeypatch.setattr(aea, "is_alignment_edit_active", lambda mw: not modes)
+    monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: bool(modes))
+    monkeypatch.setattr(mpa, "set_mask_paint_mode", lambda mw, on: modes.append(on))
+    monkeypatch.setattr(aea, "set_alignment_edit_mode", lambda mw, on: modes.clear())
+
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    assert menu.actions()[-1].text() == "Switch to Paint Mask"
+    menu.actions()[-1].trigger()
+    assert modes == [True]
+    assert getattr(main_window, mpa._ACTIVE_FACE_ATTR) == (2, 0)
+
+    menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
+    assert menu.actions()[-1].text() == "Switch to Edit Alignments"
+    menu.actions()[-1].trigger()
+    assert modes == [] and eta.active_alignment_face(main_window) == 0
