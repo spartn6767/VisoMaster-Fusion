@@ -503,3 +503,43 @@ def test_face_menu_in_paint_mask(main_window, monkeypatch):
     menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
     actions = {a.text().split("\t")[0]: a for a in menu.actions()}
     assert actions["Paste Mask"].isEnabled()
+
+
+def test_hair_layer_is_painted_separately_from_swap_mask(main_window, monkeypatch):
+    store = main_window.alignments
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 0)
+    mpa.set_layer(main_window, "hair_mask")
+    assert mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    hair = store.effective_mask(2, 0, layer="hair_mask")
+    assert hair is not None and hair.shape == (2, mm.HAIR_MASK_SIZE, mm.HAIR_MASK_SIZE)
+    assert store.effective_mask(2, 0) is None
+    assert mpa.action_states(main_window)["copy"]
+    assert mpa.copy_mask(main_window, 0, 0)
+
+    mpa.set_layer(main_window, "mask")
+    assert not mpa.action_states(main_window)["reset_all"]
+    assert not mpa.paste_mask(main_window, 1, 0)  # hair clipboard stays separate
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+
+    mpa.set_layer(main_window, "hair_mask")
+    monkeypatch.setattr(mpa, "_confirm_reset_all", lambda mw: True)
+    assert mpa.reset_all_masks(main_window) == 1
+    assert store.mask_frame_count("hair_mask") == 0
+    assert store.mask_frame_count("mask") == 1
+
+
+def test_hair_overlay_uses_computed_hair_mask(main_window):
+    mpa.set_layer(main_window, "hair_mask")
+    computed = np.zeros((mm.HAIR_MASK_SIZE, mm.HAIR_MASK_SIZE), np.uint8)
+    computed[:40] = 255
+    main_window.computed_masks = {
+        "media_path": "/v.mp4",
+        "frame": 1,
+        "faces": {},
+        "hair": {0: computed},
+    }
+    assert mpa.computed_mask(main_window, 1, 0) is computed
+    rgba = mpa.overlay_rgba(main_window, 1, 200, 200)
+    assert rgba is not None and rgba[..., 3].max() > 0
+    mpa.set_layer(main_window, "mask")
+    assert mpa.overlay_rgba(main_window, 1, 200, 200) is None

@@ -1,7 +1,8 @@
 """Hand-painted face masks in the viewer ("Paint Mask" mode).
 
 Strokes are stored on the face's alignment entry in canonical face space (see
-``manual_masks``) and override the computed swap mask. A painted mask holds on the
+``manual_masks``) and override the computed swap mask, or, with the bar's Hair
+Mask layer, Hair Makeup's computed hair mask. A painted mask holds on the
 same target face in later frames until the next frame painted for that face;
 "Reset Mask to Settings" writes an empty keyframe so the computed mask applies again.
 """
@@ -29,6 +30,7 @@ _PASTE_LABEL_ATTR = "_mask_paste_label"
 _PASTE_RUN_ATTR = "_paste_run"
 _CURSOR_ATTR = "_mask_brush_cursor"
 _ERASE_BOX_ATTR = "_mask_erase_box"
+_LAYER_BOX_ATTR = "_mask_layer_box"
 _MIN_DRAG_PIXELS = 3  # screen pixels; a click without a drag paints nothing
 _ADD_RGB = (0, 220, 120)
 _ERASE_RGB = (255, 60, 60)
@@ -38,7 +40,11 @@ DEFAULT_BRUSH = {
     "opacity": 45,
     "erase": False,
     "frame_only": False,
+    "layer": "mask",
 }
+# Which mask the brush edits: the swap mask, or Hair Makeup's hair mask.
+LAYERS = {"mask": manual_masks.SWAP_SPACE, "hair_mask": manual_masks.HAIR_SPACE}
+LAYER_NAMES = {"mask": "Swap Mask", "hair_mask": "Hair Mask"}
 
 
 def brush_settings(main_window: "MainWindow") -> dict[str, Any]:
@@ -59,6 +65,42 @@ def set_erase(main_window: "MainWindow", erase: bool) -> None:
         box.setChecked(bool(erase))
     except RuntimeError:  # bar already deleted
         setattr(main_window, _ERASE_BOX_ATTR, None)
+
+
+def current_layer(main_window: "MainWindow") -> str:
+    layer = brush_settings(main_window).get("layer")
+    return layer if layer in LAYERS else "mask"
+
+
+def _space(main_window: "MainWindow") -> manual_masks.MaskSpace:
+    return LAYERS[current_layer(main_window)]
+
+
+def _layer_fields(
+    main_window: "MainWindow", mask: Optional[np.ndarray], skip: bool = False
+) -> dict[str, Any]:
+    layer = current_layer(main_window)
+    return {layer: mask, f"{layer}_skip": skip}
+
+
+def _clipboard_attr(main_window: "MainWindow") -> str:
+    layer = current_layer(main_window)
+    return _CLIPBOARD_ATTR if layer == "mask" else f"{layer}_clipboard"
+
+
+def set_layer(main_window: "MainWindow", layer: str) -> None:
+    """Brush edits the swap mask ("mask") or the hair mask ("hair_mask")."""
+    if layer not in LAYERS:
+        return
+    brush_settings(main_window)["layer"] = layer
+    setattr(main_window, _PASTE_RUN_ATTR, None)
+    box = getattr(main_window, _LAYER_BOX_ATTR, None)
+    if box is not None:
+        try:
+            box.setCurrentIndex(list(LAYERS).index(layer))
+        except RuntimeError:  # bar already deleted
+            setattr(main_window, _LAYER_BOX_ATTR, None)
+    refresh_mask_overlay(main_window)
 
 
 def is_mask_paint_active(main_window: "MainWindow") -> bool:
@@ -224,11 +266,14 @@ def paste_step(
     frames = store.face_frames()
     target = _nearest(frames, run["source"], step)
     if mode == "mask" and not run.get("added"):
-        shown = store.effective_mask(frame_number, face_index)
+        layer = current_layer(main_window)
+        shown = store.effective_mask(frame_number, face_index, layer=layer)
 
         def source_mask(n: int) -> Optional[np.ndarray]:
             index = _source_face(main_window, n, run["center"])
-            return None if index is None else store.effective_mask(n, index)
+            return (
+                None if index is None else store.effective_mask(n, index, layer=layer)
+            )
 
         while (
             target is not None
@@ -304,7 +349,9 @@ def _add_pasted_face(
     store = main_window.alignments
     with store.edit([frame_number]):
         aea.paste_from_frame(main_window, source_frame, source_index, frame_number)
-        mask = store.effective_mask(source_frame, source_index)
+        mask = store.effective_mask(
+            source_frame, source_index, layer=current_layer(main_window)
+        )
         if mode == "mask" and mask is not None:
             index = len(aea._frame_faces(main_window, frame_number)) - 1
             set_mask(main_window, frame_number, index, mask.copy())
@@ -467,15 +514,20 @@ def action_states(main_window: "MainWindow") -> dict[str, bool]:
     frame_number = aea.current_frame_number(main_window)
     face_index = active_face(main_window)
     enabled = {
-        "reset_all": store.mask_frame_count() > 0,
+        "reset_all": store.mask_frame_count(current_layer(main_window)) > 0,
         "undo": store.can_undo(),
         "redo": store.can_redo(),
     }
     if face_index is not None:
-        has_mask = store.effective_mask(frame_number, face_index) is not None
+        has_mask = (
+            store.effective_mask(
+                frame_number, face_index, layer=current_layer(main_window)
+            )
+            is not None
+        )
         enabled.update(
             copy=has_mask,
-            paste=getattr(main_window, _CLIPBOARD_ATTR, None) is not None,
+            paste=getattr(main_window, _clipboard_attr(main_window), None) is not None,
             previous=_adjacent_source(main_window, frame_number, face_index, -1)
             is not None,
             next=_adjacent_source(main_window, frame_number, face_index, 1) is not None,
@@ -580,6 +632,19 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
 
     layout.addWidget(_DragHandle(bar, moved))
 
+    layer_box = QtWidgets.QComboBox(bar)
+    layer_box.addItems(list(LAYER_NAMES.values()))
+    layer_box.setCurrentIndex(list(LAYERS).index(current_layer(main_window)))
+    layer_box.setToolTip(
+        "Swap Mask: where the new face is pasted. Hair Mask: where Hair Makeup "
+        "recolors (add missed hair, erase wrongly tinted areas)."
+    )
+    layer_box.currentIndexChanged.connect(
+        lambda i: set_layer(main_window, list(LAYERS)[i])
+    )
+    layout.addWidget(layer_box)
+    setattr(main_window, _LAYER_BOX_ATTR, layer_box)
+
     erase = QtWidgets.QCheckBox("Erase (Shift)", bar)
     erase.setChecked(bool(brush["erase"]))
     erase.toggled.connect(lambda checked: brush.__setitem__("erase", bool(checked)))
@@ -666,14 +731,21 @@ def _keep_frame_mask(
     for index, face in enumerate(aea._frame_faces(main_window, frame_number)):
         if face.get("face_id") != face_id:
             continue
-        if face.get("mask") is None:
-            held = store.effective_mask(frame_number, index)
+        if face.get(current_layer(main_window)) is None:
+            held = store.effective_mask(
+                frame_number, index, layer=current_layer(main_window)
+            )
             store.update_face(
                 frame_number,
                 index,
                 1,
                 1,
-                mask=manual_masks.empty_mask() if held is None else held.copy(),
+                **_layer_fields(
+                    main_window,
+                    manual_masks.empty_mask(_space(main_window))
+                    if held is None
+                    else held.copy(),
+                ),
                 source=SOURCE_MANUAL,
             )
         return
@@ -706,8 +778,7 @@ def set_mask(
             face_index,
             1,
             1,
-            mask=mask,
-            mask_skip=skip,
+            **_layer_fields(main_window, mask, skip),
             source=SOURCE_MANUAL,
         ):
             return False
@@ -731,12 +802,15 @@ def apply_stroke(
         return False
     brush = brush_settings(main_window)
     mask = manual_masks.paint_stroke(
-        main_window.alignments.effective_mask(frame_number, face_index),
+        main_window.alignments.effective_mask(
+            frame_number, face_index, layer=current_layer(main_window)
+        ),
         points,
         _face_kps_px(faces[face_index], frame_w, frame_h),
         radius=float(brush["size"]) / 2.0,
         erase=erase,
         feather=float(brush["feather"]),
+        space=_space(main_window),
     )
     return set_mask(main_window, frame_number, face_index, mask)
 
@@ -747,7 +821,7 @@ def reset_mask(main_window: "MainWindow", frame_number: int, face_index: int) ->
         main_window,
         frame_number,
         face_index,
-        manual_masks.empty_mask(),
+        manual_masks.empty_mask(_space(main_window)),
         frame_only=False,
     )
 
@@ -760,7 +834,11 @@ def reset_mask_frame(
     if not 0 <= face_index < len(faces):
         return False
     return set_mask(
-        main_window, frame_number, face_index, faces[face_index].get("mask"), skip=True
+        main_window,
+        frame_number,
+        face_index,
+        faces[face_index].get(current_layer(main_window)),
+        skip=True,
     )
 
 
@@ -778,8 +856,10 @@ def apply_mask_to_range(
     if face_id is None or end < start:
         return 0
     store = main_window.alignments
-    mask = store.effective_mask(frame_number, face_index)
-    mask = manual_masks.empty_mask() if mask is None else mask.copy()
+    mask = store.effective_mask(
+        frame_number, face_index, layer=current_layer(main_window)
+    )
+    mask = manual_masks.empty_mask(_space(main_window)) if mask is None else mask.copy()
     frames = [n for n in store.frames() if start <= n <= end]
     keyframe_set = False
     applied = 0
@@ -794,8 +874,7 @@ def apply_mask_to_range(
                     index,
                     1,
                     1,
-                    mask=None if keyframe_set else mask,
-                    mask_skip=False,
+                    **_layer_fields(main_window, None if keyframe_set else mask),
                     source=SOURCE_MANUAL,
                 )
                 keyframe_set = True
@@ -863,7 +942,7 @@ def reset_all_masks(main_window: "MainWindow") -> int:
     if not _confirm_reset_all(main_window):
         return 0
     with main_window.alignments.edit():
-        cleared = main_window.alignments.clear_masks()
+        cleared = main_window.alignments.clear_masks(current_layer(main_window))
     if cleared:
         aea._refresh(main_window)
         refresh_mask_overlay(main_window)
@@ -871,25 +950,31 @@ def reset_all_masks(main_window: "MainWindow") -> int:
 
 
 def _confirm_reset_all(main_window: "MainWindow") -> bool:
+    hair = current_layer(main_window) == "hair_mask"
     answer = QtWidgets.QMessageBox.question(
         main_window,
-        "Reset All Masks",
-        "Remove every painted mask in this video? Faces go back to the masks "
+        "Reset All Hair Masks" if hair else "Reset All Masks",
+        "Remove every painted hair mask in this video? Hair Makeup goes back to "
+        "the hair mask its settings produce."
+        if hair
+        else "Remove every painted mask in this video? Faces go back to the masks "
         "your mask settings produce.",
     )
     return answer == QtWidgets.QMessageBox.StandardButton.Yes
 
 
 def copy_mask(main_window: "MainWindow", frame_number: int, face_index: int) -> bool:
-    mask = main_window.alignments.effective_mask(frame_number, face_index)
+    mask = main_window.alignments.effective_mask(
+        frame_number, face_index, layer=current_layer(main_window)
+    )
     if mask is None:
         return False
-    setattr(main_window, _CLIPBOARD_ATTR, mask.copy())
+    setattr(main_window, _clipboard_attr(main_window), mask.copy())
     return True
 
 
 def paste_mask(main_window: "MainWindow", frame_number: int, face_index: int) -> bool:
-    copied = getattr(main_window, _CLIPBOARD_ATTR, None)
+    copied = getattr(main_window, _clipboard_attr(main_window), None)
     if copied is None:
         return False
     return set_mask(main_window, frame_number, face_index, copied.copy())
@@ -903,12 +988,14 @@ def paste_mask_from_frame(
     face_index: int,
 ) -> bool:
     """Copies the effective mask of a face on another frame (clipboard untouched)."""
-    mask = main_window.alignments.effective_mask(source_frame, source_index)
+    mask = main_window.alignments.effective_mask(
+        source_frame, source_index, layer=current_layer(main_window)
+    )
     return set_mask(
         main_window,
         frame_number,
         face_index,
-        manual_masks.empty_mask() if mask is None else mask.copy(),
+        manual_masks.empty_mask(_space(main_window)) if mask is None else mask.copy(),
     )
 
 
@@ -926,13 +1013,15 @@ def clear_mask_overlay(main_window: "MainWindow") -> None:
 def computed_mask(
     main_window: "MainWindow", frame_number: int, face_index: int
 ) -> Optional[np.ndarray]:
-    """The worker's computed (settings) mask for a face on the shown frame, if captured."""
+    """The worker's computed mask (swap mask, or Hair Makeup's hair mask in Hair
+    Mask) for a face on the shown frame, if captured."""
     data = getattr(main_window, "computed_masks", None)
     if not isinstance(data, dict) or data.get("frame") != frame_number:
         return None
     if not main_window.alignments.matches_media(data.get("media_path")):
         return None
-    return data.get("faces", {}).get(face_index)
+    key = "faces" if current_layer(main_window) == "mask" else "hair"
+    return (data.get(key) or {}).get(face_index)
 
 
 def overlay_rgba(
@@ -941,21 +1030,22 @@ def overlay_rgba(
     """Tinted RGBA preview of the final masks on a frame: the computed mask with
     the painted add/erase applied (green), erased areas in red. None if empty."""
     store = main_window.alignments
+    layer, space = current_layer(main_window), _space(main_window)
     final = np.zeros((frame_h, frame_w), dtype=np.float32)
     erased = np.zeros((frame_h, frame_w), dtype=np.float32)
     found = False
     for face_index, face in enumerate(aea._frame_faces(main_window, frame_number)):
-        painted = store.effective_mask(frame_number, face_index)
+        painted = store.effective_mask(frame_number, face_index, layer=layer)
         computed = computed_mask(main_window, frame_number, face_index)
         if painted is None and computed is None:
             continue
-        stack = np.zeros((3, manual_masks.MASK_SIZE, manual_masks.MASK_SIZE), np.uint8)
+        stack = np.zeros((3, space.size, space.size), np.uint8)
         if painted is not None:
             stack[:2] = painted
         if computed is not None:
             stack[2] = computed
         add, erase, base = manual_masks.mask_to_frame(
-            stack, _face_kps_px(face, frame_w, frame_h), frame_w, frame_h
+            stack, _face_kps_px(face, frame_w, frame_h), frame_w, frame_h, space
         )
         np.maximum(final, manual_masks.combine(base, add, erase), out=final)
         np.maximum(erased, erase, out=erased)

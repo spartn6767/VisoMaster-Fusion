@@ -658,3 +658,37 @@ def test_other_faces_only_split_hair_they_touch():
         segmenter_hair_probability(logits, head, [far]),
         segmenter_hair_probability(logits, head),
     )
+
+
+def test_painted_hair_edit_adds_outside_and_erases_inside():
+    import numpy as np
+
+    from app.processors.hair_recolor import apply_hair_edit, capture_hair_mask
+    from app.processors.video_utils import manual_masks as mm
+
+    kps = mm.HAIR_SPACE.kps / 2 + 20  # canvas covers frame pixels 20..212
+    size = mm.HAIR_MASK_SIZE
+    edit = mm.empty_mask(mm.HAIR_SPACE)
+    edit[mm.ADD_LAYER, : size // 4] = 255  # add along the top
+    edit[mm.ERASE_LAYER, size // 2 :] = 255  # erase the lower half
+    computed = torch.ones(1, 40, 40)
+    placed = (computed, (100, 140, 100, 140), 1.0)
+    assert capture_hair_mask(placed, kps).max() == 255
+
+    out, (top, bottom, left, right), _ = apply_hair_edit(
+        placed, edit, kps, (300, 300), torch.device("cpu")
+    )
+    assert (top, left) == (20, 20) and bottom >= 212 and right >= 212
+    assert float(out[0, 30 - top, 100 - left]) > 0.9  # painted addition
+    assert float(out[0, 110 - top, 110 - left]) > 0.9  # computed hair kept
+    assert float(out[0, 135 - top, 110 - left]) < 0.1  # erased
+
+    out, roi, _ = apply_hair_edit(None, edit, kps, (300, 300), torch.device("cpu"))
+    assert float(out.max()) > 0.9 and roi[0] == 20
+    assert (
+        apply_hair_edit(
+            None, mm.empty_mask(mm.HAIR_SPACE), kps, (300, 300), torch.device("cpu")
+        )
+        is None
+    )
+    assert np.isfinite(out.numpy()).all()

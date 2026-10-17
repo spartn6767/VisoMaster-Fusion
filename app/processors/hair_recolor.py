@@ -14,6 +14,7 @@ import torch
 import torch.nn.functional as F
 
 from app.processors.utils import faceutil
+from app.processors.video_utils import manual_masks
 from app.processors.video_utils.alignment_store import HAIR_PROB_SIZE
 
 HAIR_LABEL = 17
@@ -607,6 +608,72 @@ def _segmenter_frame_mask(
 
 
 @torch.no_grad()
+def capture_hair_mask(
+    placed: Optional[FrameMask], kps_5: np.ndarray
+) -> Optional[np.ndarray]:
+    """The computed hair mask in the hair edit canvas (uint8), for Paint Mask."""
+    if placed is None:
+        return None
+    mask, (top, _, left, _), _ = placed
+    shift = np.array([[1, 0, left], [0, 1, top], [0, 0, 1]], dtype=np.float64)
+    return manual_masks.crop_to_canonical(
+        mask[0].float().cpu().numpy(), kps_5, shift, manual_masks.HAIR_SPACE
+    )
+
+
+@torch.no_grad()
+def apply_hair_edit(
+    placed: Optional[FrameMask],
+    edit: np.ndarray,
+    kps_5: np.ndarray,
+    frame_hw: Sequence[int],
+    device: torch.device,
+) -> Optional[FrameMask]:
+    """max(computed, painted add) * (1 - painted erase). The ROI grows to cover
+    painted additions outside the computed hair area."""
+    space = manual_masks.HAIR_SPACE
+    frame_h, frame_w = int(frame_hw[0]), int(frame_hw[1])
+    to_frame = np.linalg.inv(manual_masks.frame_to_mask_matrix(kps_5, space))
+    if placed is not None:
+        top, bottom, left, right = placed[1]
+        frame_px = placed[2]
+    else:
+        top = bottom = left = right = 0
+        frame_px = 0.0
+    if edit[manual_masks.ADD_LAYER].any():
+        s = float(space.size)
+        corners = (
+            np.array([[0, 0, 1], [s, 0, 1], [0, s, 1], [s, s, 1]], dtype=np.float64)
+            @ to_frame[:2].T
+        )
+        box = (
+            max(math.floor(float(corners[:, 1].min())), 0),
+            min(math.ceil(float(corners[:, 1].max())), frame_h),
+            max(math.floor(float(corners[:, 0].min())), 0),
+            min(math.ceil(float(corners[:, 0].max())), frame_w),
+        )
+        if placed is None:
+            top, bottom, left, right = box
+            frame_px = float(np.hypot(to_frame[0, 0], to_frame[1, 0])) * s / 512.0
+        else:
+            top, bottom = min(top, box[0]), max(bottom, box[1])
+            left, right = min(left, box[2]), max(right, box[3])
+    if bottom <= top or right <= left:
+        return placed
+    h, w = bottom - top, right - left
+    base = torch.zeros((1, h, w), dtype=torch.float32, device=device)
+    if placed is not None:
+        t0, b0, l0, r0 = placed[1]
+        base[:, t0 - top : b0 - top, l0 - left : r0 - left] = placed[0].float()
+    local = (
+        np.array([[1, 0, -left], [0, 1, -top], [0, 0, 1]], dtype=np.float64) @ to_frame
+    )
+    layers = torch.from_numpy(manual_masks.warp_mask(edit, local, (w, h))).to(device)
+    out = torch.maximum(base, layers[0:1]) * (1.0 - layers[1:2])
+    return out, (top, bottom, left, right), frame_px
+
+
+@torch.no_grad()
 def recolor_hair_in_frame(
     img: torch.Tensor,
     kps: np.ndarray,
@@ -615,8 +682,15 @@ def recolor_hair_in_frame(
     hair_cache: Optional[HairMaskCache] = None,
     segmenter_logits: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     other_kps: Sequence[np.ndarray] = (),
+    edit_kps: Optional[np.ndarray] = None,
+    hair_edit: Optional[np.ndarray] = None,
+    capture: Optional[list] = None,
 ) -> torch.Tensor:
     """Recolor one face's hair directly in the [3,H,W] frame.
+
+    ``hair_edit`` is the face's painted hair mask (Paint Mask > Hair Mask) placed
+    by ``edit_kps`` (its 5 keypoints); ``capture`` receives the computed mask in
+    the same canvas so Paint Mask can show it.
 
     ``other_kps`` are the landmarks of the frame's other faces; the segmenter
     uses them to keep this face's hair apart from theirs.
@@ -633,6 +707,15 @@ def recolor_hair_in_frame(
         )
     else:
         placed = _parser_frame_mask(img, kps, parameters, parser_logits, hair_cache)
+    if edit_kps is not None:
+        if capture is not None:
+            captured = capture_hair_mask(placed, edit_kps)
+            if captured is not None:
+                capture.append(captured)
+        if hair_edit is not None:
+            placed = apply_hair_edit(
+                placed, hair_edit, edit_kps, img.shape[-2:], img.device
+            )
     if placed is None:
         return img
     frame_mask, (top, bottom, left, right), frame_px = placed

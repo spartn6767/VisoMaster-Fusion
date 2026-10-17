@@ -27,7 +27,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from app.processors.video_utils.manual_masks import as_mask, is_empty
+from app.processors.video_utils.manual_masks import HAIR_SPACE, as_mask, is_empty
 
 ALIGNMENTS_FORMAT_VERSION = 1
 SIDECAR_SUFFIX = ".alignments.npz"
@@ -178,6 +178,10 @@ class AlignmentFace:
     mask: Optional[np.ndarray] = None
     # Use the computed mask on this frame only; a stored mask still holds forward.
     mask_skip: bool = False
+    # Hand-painted (2, HAIR_MASK_SIZE^2) add/erase edits of the Hair Makeup mask in
+    # HAIR_SPACE; held forward and reset exactly like ``mask``.
+    hair_mask: Optional[np.ndarray] = None
+    hair_mask_skip: bool = False
     # Cached face-parser hair probability (uint8, HAIR_PROB_SIZE square) in the
     # makeup crop; only filled when hair mask stabilization is on.
     hair_prob: Optional[np.ndarray] = None
@@ -199,6 +203,8 @@ class AlignmentFace:
             "source": self.source,
             "mask": None if self.mask is None else self.mask.copy(),
             "mask_skip": self.mask_skip,
+            "hair_mask": None if self.hair_mask is None else self.hair_mask.copy(),
+            "hair_mask_skip": self.hair_mask_skip,
             "hair_prob": self.hair_prob,
             "refine": self.refine,
         }
@@ -231,6 +237,8 @@ class AlignmentFace:
             source=str(face.get("source", source)),
             mask=as_mask(face.get("mask")),
             mask_skip=bool(face.get("mask_skip", False)),
+            hair_mask=as_mask(face.get("hair_mask"), HAIR_SPACE),
+            hair_mask_skip=bool(face.get("hair_mask_skip", False)),
             hair_prob=_as_hair_prob(face.get("hair_prob")),
             refine=bool(face.get("refine", False)),
         )
@@ -323,7 +331,7 @@ class AlignmentStore:
         self.media_path: Optional[str] = None
         self._revision = 0
         self._saved: dict[str, int] = {}
-        self._mask_index: tuple[int, list[int]] = (-1, [])
+        self._mask_index: dict[str, tuple[int, list[int]]] = {}
         self._undo: list[_EditStep] = []
         self._redo: list[_EditStep] = []
         self._edit_depth = 0
@@ -656,30 +664,34 @@ class AlignmentStore:
             return [f.to_pixels(frame_w, frame_h) for f in frame.faces]
 
     # --- Painted masks ---------------------------------------------------
-    def _mask_frames(self) -> list[int]:
-        if self._mask_index[0] != self._revision:
-            self._mask_index = (
+    def _mask_frames(self, layer: str = "mask") -> list[int]:
+        cached = self._mask_index.get(layer)
+        if cached is None or cached[0] != self._revision:
+            cached = (
                 self._revision,
                 sorted(
                     n
                     for n, frame in self._frames.items()
-                    if any(face.mask is not None for face in frame.faces)
+                    if any(getattr(face, layer) is not None for face in frame.faces)
                 ),
             )
-        return self._mask_index[1]
+            self._mask_index[layer] = cached
+        return cached[1]
 
-    def mask_frame_count(self) -> int:
+    def mask_frame_count(self, layer: str = "mask") -> int:
         with self._lock:
-            return len(self._mask_frames())
+            return len(self._mask_frames(layer))
 
     def effective_mask(
         self,
         frame_number: int,
         face_index: Optional[int] = None,
         face_id: Optional[str] = None,
+        layer: str = "mask",
     ) -> Optional[np.ndarray]:
         """The painted mask for a face: its own, else held from the latest earlier
-        frame with a mask for the same face_id. None if there is none or it was reset."""
+        frame with a mask for the same face_id. None if there is none or it was reset.
+        ``layer`` is "mask" (swap mask) or "hair_mask" (Hair Makeup edits)."""
         frame_number = int(frame_number)
         with self._lock:
             frame = self._frames.get(frame_number)
@@ -689,15 +701,16 @@ class AlignmentStore:
                 and 0 <= face_index < len(frame.faces)
             ):
                 own = frame.faces[face_index]
-                if own.mask_skip:
+                if getattr(own, f"{layer}_skip"):
                     return None
-                if own.mask is not None:
-                    return None if is_empty(own.mask) else own.mask
+                own_mask = getattr(own, layer)
+                if own_mask is not None:
+                    return None if is_empty(own_mask) else own_mask
                 if face_id is None:
                     face_id = own.face_id
             if face_id is None:
                 return None
-            masked = self._mask_frames()
+            masked = self._mask_frames(layer)
             for n in reversed(masked[: bisect.bisect_right(masked, frame_number)]):
                 if n == frame_number and face_index is not None:
                     continue
@@ -705,19 +718,22 @@ class AlignmentStore:
                 if held is None:
                     continue
                 for face in held.faces:
-                    if face.face_id == face_id and face.mask is not None:
-                        return None if is_empty(face.mask) else face.mask
+                    held_mask = getattr(face, layer)
+                    if face.face_id == face_id and held_mask is not None:
+                        return None if is_empty(held_mask) else held_mask
             return None
 
-    def clear_masks(self) -> int:
-        """Drops every painted mask; returns how many faces had one."""
+    def clear_masks(self, layer: str = "mask") -> int:
+        """Drops every painted mask of a layer; returns how many faces had one."""
         with self._lock:
             cleared = 0
             for frame in self._frames.values():
                 for face in frame.faces:
-                    if face.mask is not None or face.mask_skip:
-                        face.mask = None
-                        face.mask_skip = False
+                    if getattr(face, layer) is not None or getattr(
+                        face, f"{layer}_skip"
+                    ):
+                        setattr(face, layer, None)
+                        setattr(face, f"{layer}_skip", False)
                         cleared += 1
             if cleared:
                 self._revision += 1
@@ -937,6 +953,9 @@ class AlignmentStore:
         mask_index: list[int] = []
         mask_skip: list[bool] = []
         masks: list[np.ndarray] = []
+        hair_mask_index: list[int] = []
+        hair_mask_skip: list[bool] = []
+        hair_masks: list[np.ndarray] = []
         hair_index: list[int] = []
         hair_probs: list[np.ndarray] = []
 
@@ -971,6 +990,12 @@ class AlignmentStore:
                     masks.append(face.mask)
                 else:
                     mask_index.append(-1)
+                hair_mask_skip.append(face.hair_mask_skip)
+                if face.hair_mask is not None:
+                    hair_mask_index.append(len(hair_masks))
+                    hair_masks.append(face.hair_mask)
+                else:
+                    hair_mask_index.append(-1)
                 if face.hair_prob is not None:
                     hair_index.append(len(hair_probs))
                     hair_probs.append(face.hair_prob)
@@ -1013,6 +1038,13 @@ class AlignmentStore:
                 if masks
                 else np.empty((0, 2, 256, 256), dtype=np.uint8)
             ),
+            "hair_mask_index": np.asarray(hair_mask_index, dtype=np.int64),
+            "hair_mask_skip": np.asarray(hair_mask_skip, dtype=bool),
+            "hair_masks": (
+                np.stack(hair_masks).astype(np.uint8)
+                if hair_masks
+                else np.empty((0, 2, HAIR_SPACE.size, HAIR_SPACE.size), np.uint8)
+            ),
             "hair_index": np.asarray(hair_index, dtype=np.int64),
             "hair_probs": (
                 np.stack(hair_probs).astype(np.uint8)
@@ -1038,6 +1070,10 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
     mask_index = data["mask_index"] if has_masks else None
     masks = data["masks"] if has_masks else None
     mask_skip = data["mask_skip"] if "mask_skip" in data.files else None
+    has_hair_masks = "hair_mask_index" in data.files
+    hair_mask_index = data["hair_mask_index"] if has_hair_masks else None
+    hair_masks = data["hair_masks"] if has_hair_masks else None
+    hair_mask_skip = data["hair_mask_skip"] if has_hair_masks else None
     has_hair = "hair_index" in data.files
     hair_index = data["hair_index"] if has_hair else None
     hair_probs = data["hair_probs"] if has_hair else None
@@ -1049,6 +1085,7 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
         assigned_id = str(assigned_ids[i]) if assigned_ids is not None else ""
         m = int(mask_index[i]) if mask_index is not None else -1
         h = int(hair_index[i]) if hair_index is not None else -1
+        hm = int(hair_mask_index[i]) if hair_mask_index is not None else -1
         frames[int(frame_numbers[fi])].faces.append(
             AlignmentFace(
                 bbox=data["bbox"][i].astype(np.float32),
@@ -1063,6 +1100,12 @@ def _unpack(data: Any) -> dict[int, FrameAlignments]:
                 source=str(data["face_source"][i]),
                 mask=as_mask(masks[m]) if masks is not None and m >= 0 else None,
                 mask_skip=bool(mask_skip[i]) if mask_skip is not None else False,
+                hair_mask=as_mask(hair_masks[hm], HAIR_SPACE)
+                if hair_masks is not None and hm >= 0
+                else None,
+                hair_mask_skip=bool(hair_mask_skip[i])
+                if hair_mask_skip is not None
+                else False,
                 hair_prob=_as_hair_prob(hair_probs[h])
                 if hair_probs is not None and h >= 0
                 else None,

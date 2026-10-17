@@ -10,7 +10,7 @@ explicit "no manual mask" keyframe.
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import NamedTuple, Optional, Sequence
 
 import cv2
 import numpy as np
@@ -38,15 +38,42 @@ _TEMPLATE_SCALE = 0.55
 CANONICAL_KPS = ((_ARCFACE_TEMPLATE - 0.5) * _TEMPLATE_SCALE + 0.5) * MASK_SIZE
 
 
-def empty_mask() -> np.ndarray:
-    return np.zeros((2, MASK_SIZE, MASK_SIZE), dtype=np.uint8)
+class MaskSpace(NamedTuple):
+    """A square canvas tied to the face by where the 5 keypoints land on it."""
+
+    size: int
+    kps: np.ndarray
 
 
-def as_mask(value: object) -> Optional[np.ndarray]:
+SWAP_SPACE = MaskSpace(MASK_SIZE, CANONICAL_KPS)
+
+# Hair edits use a head-and-shoulders canvas: HAIR_AREA_UNITS face units across
+# (a face unit is the eye-to-mouth distance), eyes HAIR_EYES_Y down from the top.
+# It only depends on the 5 keypoints, never on the Hair Area sliders.
+HAIR_MASK_SIZE = 384
+HAIR_AREA_UNITS = 10.0
+HAIR_EYES_Y = 0.35
+_EYES = _ARCFACE_TEMPLATE[:2].mean(axis=0)
+_FACE_UNIT = float(np.linalg.norm(_ARCFACE_TEMPLATE[3:5].mean(axis=0) - _EYES))
+HAIR_SPACE = MaskSpace(
+    HAIR_MASK_SIZE,
+    (
+        (_ARCFACE_TEMPLATE - (0.5, _EYES[1])) / (_FACE_UNIT * HAIR_AREA_UNITS)
+        + (0.5, HAIR_EYES_Y)
+    )
+    * HAIR_MASK_SIZE,
+)
+
+
+def empty_mask(space: MaskSpace = SWAP_SPACE) -> np.ndarray:
+    return np.zeros((2, space.size, space.size), dtype=np.uint8)
+
+
+def as_mask(value: object, space: MaskSpace = SWAP_SPACE) -> Optional[np.ndarray]:
     if value is None:
         return None
     arr = np.asarray(value)
-    if arr.shape != (2, MASK_SIZE, MASK_SIZE):
+    if arr.shape != (2, space.size, space.size):
         return None
     return arr.astype(np.uint8, copy=True)
 
@@ -71,9 +98,11 @@ def similarity_matrix(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
     return np.array([[a, -b, tx], [b, a, ty], [0.0, 0.0, 1.0]], dtype=np.float64)
 
 
-def frame_to_mask_matrix(kps_5: np.ndarray) -> np.ndarray:
+def frame_to_mask_matrix(
+    kps_5: np.ndarray, space: MaskSpace = SWAP_SPACE
+) -> np.ndarray:
     """3x3 matrix from frame pixels to canonical mask pixels."""
-    return similarity_matrix(np.asarray(kps_5)[:5], CANONICAL_KPS)
+    return similarity_matrix(np.asarray(kps_5)[:5], space.kps)
 
 
 def paint_stroke(
@@ -83,20 +112,21 @@ def paint_stroke(
     radius: float,
     erase: bool = False,
     feather: float = 0.0,
+    space: MaskSpace = SWAP_SPACE,
 ) -> np.ndarray:
     """Returns a new mask with a stroke (frame pixel coords) painted on it.
 
     Painting one layer clears the other under the stroke, so the latest stroke wins.
     """
-    out = empty_mask() if mask is None else mask.copy()
+    out = empty_mask(space) if mask is None else mask.copy()
     if not len(points):
         return out
-    m = frame_to_mask_matrix(kps_5)
+    m = frame_to_mask_matrix(kps_5, space)
     scale = float(np.hypot(m[0, 0], m[1, 0]))
     pts = np.asarray(points, dtype=np.float64).reshape(-1, 2)
     pts = pts @ m[:2, :2].T + m[:2, 2]
     r = max(1, int(round(radius * scale)))
-    stroke = np.zeros((MASK_SIZE, MASK_SIZE), dtype=np.uint8)
+    stroke = np.zeros((space.size, space.size), dtype=np.uint8)
     ipts = np.round(pts).astype(np.int32)
     for p in ipts:
         cv2.circle(stroke, (int(p[0]), int(p[1])), r, 255, -1, cv2.LINE_AA)
@@ -132,11 +162,15 @@ def warp_mask(
 
 
 def mask_to_frame(
-    mask: np.ndarray, kps_5: np.ndarray, frame_w: int, frame_h: int
+    mask: np.ndarray,
+    kps_5: np.ndarray,
+    frame_w: int,
+    frame_h: int,
+    space: MaskSpace = SWAP_SPACE,
 ) -> np.ndarray:
-    """Both layers in frame pixel space, float32 [0, 1], shape (2, h, w)."""
+    """Every layer in frame pixel space, float32 [0, 1], shape (n, h, w)."""
     return warp_mask(
-        mask, np.linalg.inv(frame_to_mask_matrix(kps_5)), (frame_w, frame_h)
+        mask, np.linalg.inv(frame_to_mask_matrix(kps_5, space)), (frame_w, frame_h)
     )
 
 
@@ -151,15 +185,20 @@ def mask_to_crop(
 
 
 def crop_to_canonical(
-    crop_mask: np.ndarray, kps_5: np.ndarray, crop_to_frame: np.ndarray
+    crop_mask: np.ndarray,
+    kps_5: np.ndarray,
+    crop_to_frame: np.ndarray,
+    space: MaskSpace = SWAP_SPACE,
 ) -> np.ndarray:
-    """A float [0, 1] face-crop mask in canonical mask space as uint8 (MASK_SIZE^2)."""
-    matrix = frame_to_mask_matrix(kps_5) @ np.asarray(crop_to_frame, dtype=np.float64)
+    """A float [0, 1] crop mask in canonical mask space as uint8 (space.size^2)."""
+    matrix = frame_to_mask_matrix(kps_5, space) @ np.asarray(
+        crop_to_frame, dtype=np.float64
+    )
     src = np.clip(np.asarray(crop_mask, dtype=np.float32), 0.0, 1.0) * 255.0
     return cv2.warpAffine(
         src.astype(np.uint8),
         matrix[:2],
-        (MASK_SIZE, MASK_SIZE),
+        (space.size, space.size),
         flags=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=0,

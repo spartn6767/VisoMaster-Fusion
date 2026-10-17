@@ -116,3 +116,41 @@ def test_crop_mask_round_trips_through_canonical_space():
     assert canonical.dtype == np.uint8 and canonical.shape == (256, 256)
     assert canonical[CANON_NOSE] > 240
     assert abs(int((canonical > 128).sum()) - int((painted[0] > 128).sum())) < 40
+
+
+def test_hair_space_covers_head_and_shoulders():
+    kps = mm.HAIR_SPACE.kps
+    np.testing.assert_allclose(
+        mm.frame_to_mask_matrix(kps, mm.HAIR_SPACE), np.eye(3), atol=1e-6
+    )
+    eyes = kps[:2].mean(axis=0)
+    unit = np.linalg.norm(kps[3:5].mean(axis=0) - eyes)
+    assert abs(mm.HAIR_MASK_SIZE / unit - mm.HAIR_AREA_UNITS) < 1e-6
+    assert abs(eyes[1] / mm.HAIR_MASK_SIZE - mm.HAIR_EYES_Y) < 1e-6
+    mask = mm.paint_stroke(None, [kps[2]], kps, radius=5, space=mm.HAIR_SPACE)
+    assert mask.shape == (2, mm.HAIR_MASK_SIZE, mm.HAIR_MASK_SIZE)
+    assert mm.as_mask(mask) is None and mm.as_mask(mask, mm.HAIR_SPACE) is not None
+
+
+def test_hair_masks_hold_reset_and_persist(tmp_path):
+    store = AlignmentStore()
+    store.bind_media("/v.mp4")
+    face = {"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": mm.CANONICAL_KPS / 1000}
+    for n in range(3):
+        store.put(n, [dict(face, face_id="A")], 1, 1, "sig")
+    hair = mm.empty_mask(mm.HAIR_SPACE)
+    hair[0, 10:20, 10:20] = 255
+    store.update_face(0, 0, 1, 1, hair_mask=hair)
+    assert store.effective_mask(2, 0, layer="hair_mask") is not None
+    assert store.effective_mask(2, 0) is None
+    store.update_face(1, 0, 1, 1, hair_mask_skip=True)
+    assert store.effective_mask(1, 0, layer="hair_mask") is None
+
+    path = str(tmp_path / "a.npz")
+    store.save(path)
+    loaded = AlignmentStore()
+    loaded.load(path)
+    np.testing.assert_array_equal(loaded.effective_mask(2, 0, layer="hair_mask"), hair)
+    assert loaded.effective_mask(1, 0, layer="hair_mask") is None
+    assert loaded.clear_masks("hair_mask") == 2
+    assert loaded.mask_frame_count("hair_mask") == 0

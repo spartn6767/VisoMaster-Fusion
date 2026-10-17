@@ -539,13 +539,20 @@ def fill_between_edits(
                     face[key] = None
                 else:
                     face[key] = (1 - t) * np.asarray(a) + t * np.asarray(b)
-            face.update(source=SOURCE_MANUAL, mask=None, mask_skip=False)
+            face.update(
+                source=SOURCE_MANUAL,
+                mask=None,
+                mask_skip=False,
+                hair_mask=None,
+                hair_mask_skip=False,
+            )
             face.pop("hair_prob", None)
             existing = _frame_faces(main_window, n)
             index = _matching_face(existing, face_id, face["bbox"])
-            if index is not None and existing[index].get("mask") is not None:
-                face.pop("mask")  # keep a painted keyframe
-                face.pop("mask_skip")
+            for layer in ("mask", "hair_mask"):
+                if index is not None and existing[index].get(layer) is not None:
+                    face.pop(layer)  # keep a painted keyframe
+                    face.pop(f"{layer}_skip")
             if index is None:
                 store.add_face(n, face, 1, 1)
             else:

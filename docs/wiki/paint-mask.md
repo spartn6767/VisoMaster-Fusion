@@ -16,6 +16,21 @@ Paint Mask works on a paused video frame. It needs **Settings > Detectors > Reus
 - The mask is stored relative to the face's landmarks, so it moves, turns and scales with the face and survives a swapper model change.
 - How it combines with the computed mask: everything the computed mask covers, plus your painted additions, minus your painted erasures. Erasing always wins.
 
+## Hair Mask
+
+The list at the left of the bar switches what the brush paints:
+
+- **Swap Mask** (default): where the new face is pasted, as described above.
+- **Hair Mask**: where **Hair Makeup** recolors. Add hair the model missed (thin ends, highlights, holes) or erase areas it tinted by mistake (shoulders, background, someone else's hair).
+
+In Hair Mask:
+
+- The overlay shows the hair mask Hair Makeup computed on the shown frame (Hair Makeup must be on for that face), with your painted additions and erasures on top.
+- The final hair mask is the computed mask plus what you painted, minus what you erased. Stabilize Hair Mask's smoothing comes first, and Strand Refinement and Edge Softness are applied after, so painted edits aren't averaged away.
+- You can paint anywhere in a head-and-shoulders area around the face, including outside the Hair Area. That area follows the face's points, not the Hair Area sliders, so moving a slider never shifts what you painted.
+- Everything else works the same as for the swap mask: frames carry the last painted mask forward, and This Frame Only, the face menu, the keys and Undo / Redo all apply. Copy / Paste use a separate clipboard, and Reset All only clears painted hair masks.
+- Long hair moves on its own, separately from the face, so a mask carried to later frames can drift. Paint more keyframes where hair swings.
+
 ## How a mask carries to the next frames
 
 When you paint on a frame, that frame gets a **keyframe**: a stored mask for that face. Later frames that don't have a keyframe of their own **use the most recent earlier keyframe** of the same person, up to the next keyframe.

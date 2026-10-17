@@ -470,8 +470,10 @@ class FunctionWorker:
         control: dict,
         hair_cache: Any = None,
         other_kps: Any = None,
+        **hair_edit: Any,
     ) -> torch.Tensor:
-        """Thread-safe facade for applying face makeup edits."""
+        """Thread-safe facade for applying face makeup edits. ``hair_edit`` takes
+        edit_kps / hair_edit / hair_capture (painted hair mask edits)."""
         return self.frame_edits.swap_edit_face_core_makeup(
             img,
             kps,
@@ -479,6 +481,7 @@ class FunctionWorker:
             control,
             hair_cache=hair_cache,
             other_kps=other_kps,
+            **hair_edit,
         )
 
     def apply_face_makeup(self, img: Any, parameters: dict) -> Any:

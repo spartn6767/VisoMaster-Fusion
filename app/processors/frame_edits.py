@@ -1486,6 +1486,9 @@ class FrameEdits:
                 hair_cache=kwargs.get("hair_cache"),
                 segmenter_logits=self.function_worker.get_hair_segmenter_logits,
                 other_kps=kwargs.get("other_kps") or (),
+                edit_kps=kwargs.get("edit_kps"),
+                hair_edit=kwargs.get("hair_edit"),
+                capture=kwargs.get("hair_capture"),
             )
         if not other_on:
             return img

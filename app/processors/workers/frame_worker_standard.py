@@ -242,6 +242,32 @@ class StandardProcessor:
                 None if target_id is None else str(target_id),
             )
 
+        computed_hair_masks: dict[int, list[np.ndarray]] = {}
+
+        def hair_edit_for(fface: dict, target: Any) -> dict:
+            """Painted hair mask kwargs for Hair Makeup (Paint Mask > Hair Mask)."""
+            index = fface.get("alignment_index")
+            if (
+                not use_alignment_cache
+                or alignment_store is None
+                or index is None
+                or fface.get("kps_5") is None
+            ):
+                return {}
+            target_id = getattr(target, "face_id", None)
+            out: dict[str, Any] = {
+                "edit_kps": np.asarray(fface["kps_5"], dtype=np.float64)[:5],
+                "hair_edit": alignment_store.effective_mask(
+                    alignment_frame,
+                    int(index),
+                    None if target_id is None else str(target_id),
+                    layer="hair_mask",
+                ),
+            }
+            if capture_computed_masks:
+                out["hair_capture"] = computed_hair_masks.setdefault(int(index), [])
+            return out
+
         def other_faces_kps(fface: dict) -> list:
             """5-point landmarks of every other face in the frame."""
             return [
@@ -749,6 +775,7 @@ class StandardProcessor:
                                         best_fface, target_face, params
                                     ),
                                     other_kps=other_faces_kps(best_fface),
+                                    **hair_edit_for(best_fface, target_face),
                                 )
                         except Exception as e:
                             print(
@@ -898,6 +925,7 @@ class StandardProcessor:
                                         fface, best_target, params
                                     ),
                                     other_kps=other_faces_kps(fface),
+                                    **hair_edit_for(fface, best_target),
                                 )
                         except Exception as e:
                             print(
@@ -910,6 +938,7 @@ class StandardProcessor:
                 "media_path": self.worker.video_processor.media_path,
                 "frame": alignment_frame,
                 "faces": {i: out[0] for i, out in computed_masks.items() if out},
+                "hair": {i: out[0] for i, out in computed_hair_masks.items() if out},
             }
 
         if pending_alignment_faces is not None and alignment_store is not None:
