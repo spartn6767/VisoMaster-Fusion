@@ -50,6 +50,7 @@ def test_embedding_cards_are_face_sized_pictures_sorted_by_name(qapp):
     from app.ui.widgets.actions import list_view_actions
 
     list_widget = QtWidgets.QListWidget()
+    list_widget.setFlow(QtWidgets.QListView.Flow.TopToBottom)
     main_window = SimpleNamespace(
         inputEmbeddingsList=list_widget,
         merged_embeddings={},
@@ -66,6 +67,8 @@ def test_embedding_cards_are_face_sized_pictures_sorted_by_name(qapp):
         )
     buttons = [list_widget.itemWidget(list_widget.item(i)) for i in range(2)]
     assert [b.embedding_name for b in buttons] == ["Amy", "Zed"]
+    assert list_widget.flow() == QtWidgets.QListView.Flow.LeftToRight
+    assert list_widget.isWrapping()
     for button in buttons:
         assert button.size() == QtCore.QSize(70, 70)
         assert button.text() == ""

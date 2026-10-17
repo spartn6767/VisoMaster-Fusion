@@ -568,8 +568,16 @@ def create_and_add_embed_button_to_list(
     size = QtCore.QSize(*_get_face_button_size(main_window))
     embed_button.setFixedSize(size)
     embed_button.setIconSize(size - QtCore.QSize(8, 8))
-    # One scrolling row of picture cards, sized like the face cards
-    inputEmbeddingsList.setWrapping(False)
+    # Picture cards fill rows left to right and wrap, like the input faces
+    inputEmbeddingsList.setFlow(QtWidgets.QListView.Flow.LeftToRight)
+    inputEmbeddingsList.setWrapping(True)
+    inputEmbeddingsList.setResizeMode(QtWidgets.QListView.ResizeMode.Adjust)
+    inputEmbeddingsList.setVerticalScrollBarPolicy(
+        QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    inputEmbeddingsList.setHorizontalScrollBarPolicy(
+        QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
     inputEmbeddingsList.setGridSize(size + QtCore.QSize(4, 4))
 
     list_item = QtWidgets.QListWidgetItem(inputEmbeddingsList)
