@@ -495,7 +495,7 @@ def test_face_menu_in_paint_mask(main_window, monkeypatch):
     actions["Switch to Erase"].trigger()
     assert mpa.brush_settings(main_window)["erase"]
     switch_menu = eta.face_menu_at(main_window, None, 0.3, 0.3)
-    assert switch_menu.actions()[-2].text() == "Switch to Paint"
+    assert switch_menu.actions()[-2].text() == "Switch to Paint\t1"
     switch_menu.actions()[-2].trigger()
     assert not mpa.brush_settings(main_window)["erase"]
     assert actions["Copy Mask"].isEnabled() and not actions["Paste Mask"].isEnabled()

@@ -227,14 +227,26 @@ EDIT_MODE_KEYS = {
     QtCore.Qt.Key.Key_X: "next",
     QtCore.Qt.Key.Key_M: "delete",
 }
+# Paint Mask only: key -> erase (True) or paint (False).
+PAINT_MODE_KEYS = {QtCore.Qt.Key.Key_1: False, QtCore.Qt.Key.Key_3: True}
 
 
 def edit_mode_key(main_window: "MainWindow", event: QtGui.QKeyEvent) -> bool:
     """C/V/Z/X/M in an edit mode run the bar's Copy, Paste, < Paste, Paste > and
-    Delete Face (Reset Frame in Paint Mask). True if the key was taken."""
+    Delete Face (Reset Frame in Paint Mask); 1 / 3 paint / erase in Paint Mask.
+    True if the key was taken."""
     from app.ui.widgets.actions import edit_toolbar_actions, mask_paint_actions
 
-    action = EDIT_MODE_KEYS.get(QtCore.Qt.Key(event.key()))
+    key = QtCore.Qt.Key(event.key())
+    if key in PAINT_MODE_KEYS and mask_paint_actions.is_mask_paint_active(main_window):
+        if event.modifiers() not in (
+            QtCore.Qt.KeyboardModifier.NoModifier,
+            QtCore.Qt.KeyboardModifier.KeypadModifier,
+        ):
+            return False
+        mask_paint_actions.set_erase(main_window, PAINT_MODE_KEYS[key])
+        return True
+    action = EDIT_MODE_KEYS.get(key)
     if action is None or event.modifiers() != QtCore.Qt.KeyboardModifier.NoModifier:
         return False
     if is_alignment_edit_active(main_window):

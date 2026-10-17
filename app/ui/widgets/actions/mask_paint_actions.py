@@ -59,6 +59,12 @@ def set_erase(main_window: "MainWindow", erase: bool) -> None:
         box.setChecked(bool(erase))
     except RuntimeError:  # bar already deleted
         setattr(main_window, _ERASE_BOX_ATTR, None)
+    view = getattr(main_window, "graphicsViewFrame", None)
+    if getattr(main_window, _CURSOR_ATTR, None) and isinstance(
+        view, QtWidgets.QGraphicsView
+    ):
+        pos = view.viewport().mapFromGlobal(QtGui.QCursor.pos())
+        update_brush_cursor(main_window, view, view.mapToScene(pos))
 
 
 def is_mask_paint_active(main_window: "MainWindow") -> bool:
@@ -582,6 +588,7 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
 
     erase = QtWidgets.QCheckBox("Erase (Shift)", bar)
     erase.setChecked(bool(brush["erase"]))
+    erase.setToolTip("3 erases, 1 paints. Hold Shift to flip it for one stroke.")
     erase.toggled.connect(lambda checked: brush.__setitem__("erase", bool(checked)))
     layout.addWidget(erase)
     setattr(main_window, _ERASE_BOX_ATTR, erase)
