@@ -15,6 +15,7 @@ import torch
 
 from app.ui.widgets import widget_components
 from app.ui.widgets.actions import common_actions as common_widget_actions
+from app.ui.widgets.actions import unsaved_changes_actions
 from app.ui.widgets.actions import card_actions
 from app.ui.widgets.actions import list_view_actions
 from app.ui.widgets.actions import video_control_actions
@@ -684,7 +685,9 @@ def load_saved_workspace(
     if not (isinstance(data_filename, str) and Path(data_filename).is_file()):
         data_filename = False
     if data_filename:
-        if not alignment_edit_actions.confirm_load_workspace(main_window):
+        if not unsaved_changes_actions.confirm_discard_changes(
+            main_window, "loading another workspace"
+        ):
             return
         with open(data_filename, "r", encoding="utf-8") as data_file:
             data = json.load(data_file)
@@ -1031,6 +1034,7 @@ def load_saved_workspace(
                 "loaded_embedding_filename", ""
             )
             _restore_current_workspace_path(main_window, str(data_filename), data)
+            unsaved_changes_actions.mark_saved(main_window)
             common_widget_actions.set_control_widgets_values(main_window)
             # Set output folder using .get() with a default empty string
             output_folder = control.get("OutputMediaFolder", "")
@@ -1287,7 +1291,12 @@ def new_workspace(main_window: "MainWindow", *args) -> None:
         main_window, "start a new workspace"
     ):
         return
-    if (
+    if unsaved_changes_actions.has_unsaved_changes(main_window):
+        if not unsaved_changes_actions.confirm_discard_changes(
+            main_window, "starting a new workspace"
+        ):
+            return
+    elif (
         QtWidgets.QMessageBox.question(
             main_window,
             "New Workspace",
@@ -1312,6 +1321,7 @@ def new_workspace(main_window: "MainWindow", *args) -> None:
     video_control_actions.reset_media_buttons(main_window)
     main_window.loaded_embedding_filename = ""
     main_window.current_workspace_path = ""
+    unsaved_changes_actions.mark_saved(main_window)
     common_widget_actions.create_and_show_toast_message(
         main_window, "New Workspace", "Started a new workspace."
     )
@@ -1617,6 +1627,7 @@ def save_current_workspace(
                 print(f"[INFO] Last workspace saved to: {data_filename}")
             else:
                 main_window.current_workspace_path = str(data_filename)
+                unsaved_changes_actions.mark_saved(main_window)
                 common_widget_actions.create_and_show_toast_message(
                     main_window,
                     "Workspace Saved",

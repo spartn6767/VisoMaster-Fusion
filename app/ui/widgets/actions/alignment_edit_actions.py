@@ -1226,16 +1226,3 @@ def confirm_switch_target_media(
         "Switch",
         "Switching target media discards them, including manual edits.",
     )
-
-
-def confirm_load_workspace(main_window: "MainWindow") -> bool:
-    """Asks before loading a workspace drops unsaved alignments; False means cancel."""
-    store = _unsaved_alignments(main_window)
-    if store is None:
-        return True
-    return _confirm_discard(
-        main_window,
-        store,
-        "Load",
-        "Loading a workspace discards them, including manual edits.",
-    )

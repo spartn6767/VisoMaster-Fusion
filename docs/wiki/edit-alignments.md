@@ -95,4 +95,4 @@ While this mode is on, **K** / **L** step back / forward by the frame-step value
 - **Only the frame you're on.** Unlike painted masks, alignments don't carry forward: every frame stores its own faces. To fix a run of frames, go through them and use **< Paste** or **Paste >** to bring the face over from the neighbouring frame, then adjust it.
 - **An edited frame is kept.** It's marked as manually edited, so face detection won't replace it, and it stays in use even if you change detector settings. Only Re-detect Frame or Reset All Alignments removes it.
 - **Painted masks move with the landmarks.** A mask is stored relative to the face's landmarks, so fixing them on a frame moves that frame's painted mask too. See [Paint Mask](paint-mask.md) for how masks carry to the next frames.
-- **Saving:** alignments are saved with the workspace. If you switch videos or load a workspace with unsaved alignments, the app asks first.
+- **Saving:** alignments are saved with the workspace. If you switch videos with unsaved alignments, or close the app, start a new workspace or load another one with any unsaved changes, the app asks first.

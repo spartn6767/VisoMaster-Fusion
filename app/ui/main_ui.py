@@ -1199,6 +1199,14 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def closeEvent(self, event):
         print("[INFO] MainWindow: closeEvent called.")
+        from app.ui.widgets.actions import unsaved_changes_actions
+
+        if not unsaved_changes_actions.confirm_close(
+            self, ask_unsaved=not self.quit_without_saving
+        ):
+            self.quit_without_saving = False
+            event.ignore()
+            return
 
         self.video_processor.stop_processing()
         list_view_actions.clear_stop_loading_input_media(self)
@@ -1275,6 +1283,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # Re-populate and set current selection for dynamic widgets like DenoiserUNetModelSelection
         self._populate_denoiser_unet_models()
         self._populate_reference_kv_tensors()
+        from app.ui.widgets.actions import unsaved_changes_actions
+
+        unsaved_changes_actions.mark_saved(self)
 
     def _apply_startup_execution_provider(self, provider: str) -> None:
         if self.control.get("ProvidersPrioritySelection") == provider:
