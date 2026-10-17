@@ -782,6 +782,14 @@ def set_mask(
             source=SOURCE_MANUAL,
         ):
             return False
+    # Re-render from a fresh read of the frame, exactly like stepping back onto it.
+    clear_caches = getattr(
+        getattr(main_window, "video_processor", None),
+        "_clear_single_frame_preview_caches",
+        None,
+    )
+    if callable(clear_caches):
+        clear_caches()
     aea._refresh(main_window)
     refresh_mask_overlay(main_window)
     return True
