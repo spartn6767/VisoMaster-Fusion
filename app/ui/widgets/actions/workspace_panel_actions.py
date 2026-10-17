@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 
 RECENT_LIMIT = 10
+_MEDIA = Path(__file__).resolve().parents[2] / "core" / "media"
 _PANEL_ATTR = "workspacePanel"
 _LABEL_ATTR = "_workspace_panel_label"
 
@@ -148,31 +149,50 @@ def install_workspace_panel(main_window: Any) -> QtWidgets.QWidget:
     body = QtWidgets.QWidget(panel)
     row = QtWidgets.QHBoxLayout(body)
     row.setContentsMargins(0, 0, 0, 0)
-    for text, tip, slot in (
-        ("Open...", "Open a saved workspace.", partial(open_workspace, main_window)),
+    for key, icon, tip, slot in (
         (
-            "Save",
-            "Save the workspace with its alignments and masks (Ctrl+S).",
+            "open",
+            "open_file.png",
+            "Open Workspace...",
+            partial(open_workspace, main_window),
+        ),
+        (
+            "save",
+            "save_file.png",
+            "Save Workspace, with its alignments and masks (Ctrl+S)",
             partial(save_workspace, main_window, False),
         ),
         (
-            "Save As...",
-            "Save the workspace to a new file (Ctrl+Shift+S).",
+            "save_as",
+            "save_file_as.png",
+            "Save Workspace As... (Ctrl+Shift+S)",
             partial(save_workspace, main_window, True),
         ),
     ):
-        button = QtWidgets.QPushButton(text, body)
+        button = QtWidgets.QToolButton(body)
+        button.setObjectName(f"workspacePanel_{key}")
+        button.setIcon(QtGui.QIcon(str(_MEDIA / icon)))
+        button.setIconSize(QtCore.QSize(18, 18))
+        button.setAutoRaise(True)
         button.setToolTip(tip)
         button.clicked.connect(lambda *_, s=slot: s())
         row.addWidget(button)
     recent = QtWidgets.QToolButton(body)
-    recent.setText("Recent")
-    recent.setToolTip("Open one of the last workspaces you opened or saved.")
+    recent.setObjectName("workspacePanel_recent")
+    recent.setIcon(
+        body.style().standardIcon(
+            QtWidgets.QStyle.StandardPixmap.SP_FileDialogDetailedView
+        )
+    )
+    recent.setIconSize(QtCore.QSize(18, 18))
+    recent.setAutoRaise(True)
+    recent.setToolTip("Recent Workspaces")
     recent.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
     menu = QtWidgets.QMenu(recent)
     menu.aboutToShow.connect(lambda: _populate_recent_menu(main_window, menu))
     recent.setMenu(menu)
     row.addWidget(recent)
+    row.addStretch(1)
     outer.addWidget(body)
 
     def toggled(on: bool) -> None:
@@ -182,7 +202,19 @@ def install_workspace_panel(main_window: Any) -> QtWidgets.QWidget:
         )
 
     toggle.toggled.connect(toggled)
-    main_window.vboxLayout.insertWidget(0, panel)
+    dock = getattr(main_window, "input_Target_DockWidget", None)
+    if isinstance(dock, QtWidgets.QDockWidget):
+        # Above the dock's "Target Videos" title, so Target Videos sits below it.
+        title_bar = QtWidgets.QWidget(dock)
+        column = QtWidgets.QVBoxLayout(title_bar)
+        column.setContentsMargins(6, 4, 6, 2)
+        column.setSpacing(2)
+        panel.setParent(title_bar)
+        column.addWidget(panel)
+        column.addWidget(QtWidgets.QLabel(dock.windowTitle(), title_bar))
+        dock.setTitleBarWidget(title_bar)
+    else:
+        main_window.vboxLayout.insertWidget(0, panel)
     for keys, save_as in (("Ctrl+S", False), ("Ctrl+Shift+S", True)):
         shortcut = QtGui.QShortcut(QtGui.QKeySequence(keys), main_window)
         shortcut.activated.connect(partial(save_workspace, main_window, save_as))

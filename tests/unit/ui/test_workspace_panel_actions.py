@@ -51,9 +51,10 @@ def test_panel_buttons_and_ctrl_s(tmp_path, monkeypatch):
     wpa.refresh_workspace_panel(mw)
     assert mw._workspace_panel_label.text() == "proj.json"
 
-    buttons = {b.text(): b for b in panel.findChildren(QtWidgets.QPushButton)}
-    buttons["Save"].click()
-    buttons["Save As..."].click()
+    buttons = {b.objectName(): b for b in panel.findChildren(QtWidgets.QToolButton)}
+    assert "Ctrl+S" in buttons["workspacePanel_save"].toolTip()
+    buttons["workspacePanel_save"].click()
+    buttons["workspacePanel_save_as"].click()
     shortcuts = {s.key().toString(): s for s in mw.findChildren(QtGui.QShortcut)}
     shortcuts["Ctrl+S"].activated.emit()
     shortcuts["Ctrl+Shift+S"].activated.emit()
