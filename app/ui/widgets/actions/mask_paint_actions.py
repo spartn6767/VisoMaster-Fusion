@@ -191,9 +191,9 @@ def paste_step(
     matches the one shown are skipped."""
     store = main_window.alignments
     faces = aea._frame_faces(main_window, frame_number)
-    if not 0 <= face_index < len(faces):
-        return False
     run = _paste_run(main_window, mode, frame_number, face_index)
+    if run is None and not 0 <= face_index < len(faces):
+        return False
     if run is None:
         x1, y1, x2, y2 = faces[face_index]["bbox"]
         run = {
@@ -239,7 +239,11 @@ def paste_step(
         )
     else:
         aea.paste_from_frame(
-            main_window, target, source_index, frame_number, face_index
+            main_window,
+            target,
+            source_index,
+            frame_number,
+            None if run.get("added") else face_index,
         )
     run.update(
         source=target,
@@ -248,6 +252,71 @@ def paste_step(
     )
     setattr(main_window, _PASTE_RUN_ATTR, run)
     return True
+
+
+def open_run_face(
+    main_window: "MainWindow", mode: str, frame_number: int
+) -> Optional[int]:
+    """Face of the run still open on this frame (it may be absent after a
+    double-click run walked back to before the face was added)."""
+    run = getattr(main_window, _PASTE_RUN_ATTR, None)
+    if run is None:
+        return None
+    return (
+        run["face"]
+        if _paste_run(main_window, mode, frame_number, run["face"])
+        else None
+    )
+
+
+DEFAULT_NEW_FACE_HEIGHT = 0.2  # of the frame height
+
+
+def paste_new_face(
+    main_window: "MainWindow",
+    frame_number: int,
+    point: tuple[float, float],
+    aspect: float = 1.0,
+) -> int:
+    """Adds a face at a point where none is stored (normalised coords; aspect is
+    frame height / width). Pastes the nearest earlier frame's face if it is near
+    the point (and opens a Z / X run on it), else draws a box centred on the point
+    sized like that face (or a default size) for the landmarks to be fixed by hand."""
+    store = main_window.alignments
+    x, y = point
+    index = len(aea._frame_faces(main_window, frame_number))
+    height = DEFAULT_NEW_FACE_HEIGHT
+    width = height * aspect
+    source = _nearest(store.face_frames(), frame_number, -1)
+    source_index = None if source is None else _source_face(main_window, source, point)
+    if source is not None and source_index is not None:
+        x1, y1, x2, y2 = aea._frame_faces(main_window, source)[source_index]["bbox"]
+        width, height = x2 - x1, y2 - y1
+        if abs(x - (x1 + x2) / 2.0) <= width and abs(y - (y1 + y2) / 2.0) <= height:
+            before = store.revision
+            aea.paste_from_frame(main_window, source, source_index, frame_number)
+            setattr(
+                main_window,
+                _PASTE_RUN_ATTR,
+                {
+                    "mode": "align",
+                    "frame": frame_number,
+                    "face": index,
+                    "center": (x, y),
+                    "source": source,
+                    "pasted": store.revision != before,
+                    "added": True,
+                    "revision": store.revision,
+                },
+            )
+            aea.select_face(main_window, frame_number, index)
+            return index
+    bbox = np.array(
+        [x - width / 2, y - height / 2, x + width / 2, y + height / 2], np.float32
+    )
+    index = aea.add_manual_face(main_window, frame_number, np.clip(bbox, 0.0, 1.0))
+    aea.select_face(main_window, frame_number, index)
+    return index
 
 
 def paste_source_text(

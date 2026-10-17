@@ -1933,6 +1933,12 @@ def enable_zoom_and_pan(
             # Explicitly call the base class implementation
             QtWidgets.QGraphicsView.mouseReleaseEvent(self, event)
 
+    def mouseDoubleClickEvent(
+        self: QtWidgets.QGraphicsView, event: QtGui.QMouseEvent
+    ) -> None:
+        if not alignment_edit_actions.handle_double_click(main_window, self, event):
+            QtWidgets.QGraphicsView.mouseDoubleClickEvent(self, event)
+
     def contextMenuEvent(
         self: QtWidgets.QGraphicsView, event: QtGui.QContextMenuEvent
     ) -> None:
@@ -1946,6 +1952,7 @@ def enable_zoom_and_pan(
     view.mousePressEvent = partial(mousePressEvent, view)
     view.mouseMoveEvent = partial(mouseMoveEvent, view)
     view.mouseReleaseEvent = partial(mouseReleaseEvent, view)
+    view.mouseDoubleClickEvent = partial(mouseDoubleClickEvent, view)
     view.contextMenuEvent = partial(contextMenuEvent, view)
 
     # Set anchors for better interaction

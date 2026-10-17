@@ -45,6 +45,7 @@ While either mode is on, these keys replace their usual action and work on the s
 ## Mouse with keys
 
 - **Viewer:** the wheel zooms; Shift+wheel switches to the next/previous embedding; middle-drag pans; right-click opens the viewport menu.
+- **Edit Alignments:** drag on an empty area to draw a face box; double-click to copy the earlier frame's face there (or onto the box you double-click), or draw a box centred on the click if no earlier face is near.
 - **Paint Mask:** hold Shift while painting to erase. A circle around the pointer shows the brush size; the dashed inner circle shows where the feathered edge starts.
 - **Input face and merged embedding cards:** Ctrl+click assigns several to a face; Shift+click selects a range of input faces.
 - **Sliders and dropdowns:** the wheel only changes them with Ctrl held, unless the setting that turns on mouse-wheel control for sliders (`SliderMouseWheelControlToggle`) is enabled.

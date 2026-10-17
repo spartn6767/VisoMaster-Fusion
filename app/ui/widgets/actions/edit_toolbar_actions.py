@@ -200,6 +200,8 @@ def active_alignment_face(main_window: "MainWindow") -> Optional[int]:
 def alignment_bar_action(main_window: "MainWindow", key: str) -> Any:
     frame_number = aea.current_frame_number(main_window)
     face_index = active_alignment_face(main_window)
+    if face_index is None and key in ("previous", "next"):
+        face_index = mpa.open_run_face(main_window, "align", frame_number)
     result: Any = False
     if key in ("undo", "redo"):
         result = aea.undo_edit(main_window, redo=key == "redo")

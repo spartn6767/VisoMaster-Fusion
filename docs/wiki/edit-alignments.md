@@ -13,6 +13,7 @@ Edit Alignments works on a paused video frame. It needs **Settings > Detectors >
 - **Drag inside a box** to move the whole face.
 - **Drag a corner square** to resize the box.
 - **Drag on an empty area** to draw a box around a face the detector missed. The app fills in its landmarks on the next refresh.
+- **Double-click** where the detector missed a face to copy the face from the nearest earlier frame with stored faces, at the position it had there. If no earlier face is near the click, a box is drawn centred on the click (sized like the earlier face, or a default size) for you to adjust; its landmarks are filled in on the next refresh. Double-clicking an existing box replaces it with the earlier frame's face, like < Paste. Either way, **Z** / **X** then try other frames as described below, and one Ctrl+Z undoes the whole thing.
 - **Right-click a face** to select it for the bar's buttons.
 
 ## Bar buttons

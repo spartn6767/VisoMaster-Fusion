@@ -485,3 +485,54 @@ def test_repeated_paste_walks_frames_and_restores_original(main_window):
 
     frame["n"] = 4
     assert mpa.paste_source_text(main_window, "align", 0) == ""
+
+
+def _bbox(store, frame, index=0):
+    return [round(float(v), 3) for v in store.get(frame, 100, 100, None)[index]["bbox"]]
+
+
+def test_double_click_pastes_earlier_face_where_missing(main_window):
+    from app.ui.widgets.actions import edit_toolbar_actions as eta
+
+    store = main_window.alignments
+    for n in (1, 2, 4):
+        store.put(n, [_face(10 + n, 10, 30 + n, 30)], 100, 100, "sig")
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 3)
+
+    assert aea.paste_or_draw_at(main_window, 3, 0.2, 0.2) == 0
+    assert _bbox(store, 3) == [12, 10, 32, 30]
+    eta.alignment_bar_action(main_window, "previous")
+    assert _bbox(store, 3) == [11, 10, 31, 30]
+    eta.alignment_bar_action(main_window, "next")
+    eta.alignment_bar_action(main_window, "next")
+    assert not store.get(3, 100, 100, None)
+    eta.alignment_bar_action(main_window, "next")
+    assert _bbox(store, 3) == [14, 10, 34, 30]
+
+    assert store.undo() is not None and not store.can_undo()
+    assert not store.get(3, 100, 100, None)
+
+
+def test_double_click_on_face_replaces_it_with_earlier_face(main_window):
+    store = main_window.alignments
+    for n in (1, 2, 3):
+        store.put(n, [_face(10 + n, 10, 30 + n, 30)], 100, 100, "sig")
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 3)
+
+    assert aea.paste_or_draw_at(main_window, 3, 0.2, 0.2) == 0
+    assert _bbox(store, 3) == [12, 10, 32, 30]
+    assert len(store.get(3, 100, 100, None)) == 1
+
+
+def test_double_click_draws_centred_box_when_no_earlier_face_is_near(main_window):
+    store = main_window.alignments
+    store.put(1, [_face(10, 10, 30, 30)], 100, 100, "sig")
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 3)
+
+    assert aea.paste_or_draw_at(main_window, 3, 0.8, 0.8) == 0
+    assert _bbox(store, 3) == [70, 70, 90, 90]
+    assert store.get(3, 100, 100, None)[0]["source"] == SOURCE_MANUAL
+
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 0)
+    aea.paste_or_draw_at(main_window, 0, 0.5, 0.5, aspect=0.5)
+    assert _bbox(store, 0) == [45, 40, 55, 60]

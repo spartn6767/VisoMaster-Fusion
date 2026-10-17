@@ -952,6 +952,50 @@ def handle_mouse_release(
     return True
 
 
+def handle_double_click(
+    main_window: "MainWindow", view: QtWidgets.QGraphicsView, event: QtGui.QMouseEvent
+) -> bool:
+    """Double-click: paste the earlier frame's face here (see paste_or_draw_at)."""
+    if event.button() != QtCore.Qt.MouseButton.LeftButton:
+        return False
+    if not is_alignment_edit_active(main_window):
+        return False
+    rect = _pixmap_rect(main_window)
+    point = view.mapToScene(event.pos())
+    if rect is None or not rect.contains(point):
+        return True
+    paste_or_draw_at(
+        main_window,
+        current_frame_number(main_window),
+        *_to_normalized(rect, point.x(), point.y()),
+        aspect=rect.height() / rect.width(),
+    )
+    return True
+
+
+def paste_or_draw_at(
+    main_window: "MainWindow",
+    frame_number: int,
+    x: float,
+    y: float,
+    aspect: float = 1.0,
+) -> int:
+    """On a face: replace it with the earlier frame's face, as < Paste does.
+    Elsewhere: add the earlier frame's face, or a box centred here if none is near."""
+    from app.ui.widgets.actions import edit_toolbar_actions
+    from app.ui.widgets.actions import mask_paint_actions as mpa
+
+    faces = _frame_faces(main_window, frame_number)
+    index = face_index_at(faces, x, y) if faces else None
+    if index is not None:
+        select_face(main_window, frame_number, index)
+        mpa.paste_step(main_window, "align", frame_number, index, -1)
+    else:
+        index = mpa.paste_new_face(main_window, frame_number, (x, y), aspect)
+    edit_toolbar_actions.sync_alignment_bar(main_window)
+    return index
+
+
 def add_context_menu_actions(
     main_window: "MainWindow", menu: QtWidgets.QMenu, scene_pos: QtCore.QPointF
 ) -> dict[QtGui.QAction, Callable[[], Any]]:
