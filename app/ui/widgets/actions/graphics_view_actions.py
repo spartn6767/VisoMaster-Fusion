@@ -33,7 +33,12 @@ def update_graphics_view(
     scene = main_window.graphicsViewFrame.scene()
     pixmap_item = None
     for item in scene.items():
-        if isinstance(item, QtWidgets.QGraphicsPixmapItem):
+        # Skip edit-mode overlays (e.g. the Paint Mask overlay is a pixmap item
+        # drawn above the frame); only the frame itself gets the new picture.
+        if (
+            isinstance(item, QtWidgets.QGraphicsPixmapItem)
+            and item.data(0) != alignment_edit_actions.OVERLAY_ITEM_TAG
+        ):
             pixmap_item = item
             break
 
