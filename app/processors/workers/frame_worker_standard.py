@@ -235,11 +235,14 @@ class StandardProcessor:
         def manual_mask_for(fface: dict, target: Any) -> np.ndarray | None:
             if not use_alignment_cache or alignment_store is None:
                 return None
+            # A stored face holds masks by its own face_id, exactly as Paint Mask
+            # shows them; only a fresh detection falls back to the target's id.
+            index = fface.get("alignment_index")
             target_id = getattr(target, "face_id", None)
             return alignment_store.effective_mask(
                 alignment_frame,
-                fface.get("alignment_index"),
-                None if target_id is None else str(target_id),
+                index,
+                None if index is not None or target_id is None else str(target_id),
             )
 
         computed_hair_masks: dict[int, list[np.ndarray]] = {}
