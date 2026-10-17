@@ -538,29 +538,31 @@ def test_double_click_draws_centred_box_when_no_earlier_face_is_near(main_window
     assert _bbox(store, 0) == [45, 40, 55, 60]
 
 
-def test_number_keys_switch_paint_and_erase(main_window, monkeypatch):
+def test_key_3_toggles_paint_and_erase(main_window, monkeypatch):
     from PySide6 import QtCore
 
     from app.ui.widgets.actions import mask_paint_actions as mpa
 
     Qt = QtCore.Qt
-    modes = []
-    monkeypatch.setattr(mpa, "set_erase", lambda mw, erase: modes.append(erase))
     monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: True)
+    main_window.mask_brush = dict(mpa.DEFAULT_BRUSH)
 
     def key(k, mods=Qt.KeyboardModifier.NoModifier):
         return SimpleNamespace(key=lambda: k, modifiers=lambda: mods)
 
     assert aea.edit_mode_key(main_window, key(Qt.Key.Key_3))
+    assert main_window.mask_brush["erase"] is True
     assert aea.edit_mode_key(
-        main_window, key(Qt.Key.Key_1, Qt.KeyboardModifier.KeypadModifier)
+        main_window, key(Qt.Key.Key_3, Qt.KeyboardModifier.KeypadModifier)
     )
+    assert main_window.mask_brush["erase"] is False
     assert not aea.edit_mode_key(
         main_window, key(Qt.Key.Key_3, Qt.KeyboardModifier.ControlModifier)
     )
-    assert not aea.edit_mode_key(main_window, key(Qt.Key.Key_2))
-    assert modes == [True, False]
+    assert not aea.edit_mode_key(main_window, key(Qt.Key.Key_1))
+    assert main_window.mask_brush["erase"] is False
 
     monkeypatch.setattr(mpa, "is_mask_paint_active", lambda mw: False)
     main_window.alignment_edit_enabled = False
     assert not aea.edit_mode_key(main_window, key(Qt.Key.Key_3))
+    assert main_window.mask_brush["erase"] is False

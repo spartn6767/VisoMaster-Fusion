@@ -588,7 +588,9 @@ def _build_brush_bar(main_window: "MainWindow") -> QtWidgets.QFrame:
 
     erase = QtWidgets.QCheckBox("Erase (Shift)", bar)
     erase.setChecked(bool(brush["erase"]))
-    erase.setToolTip("3 erases, 1 paints. Hold Shift to flip it for one stroke.")
+    erase.setToolTip(
+        "3 switches between paint and erase. Hold Shift to flip it for one stroke."
+    )
     erase.toggled.connect(lambda checked: brush.__setitem__("erase", bool(checked)))
     layout.addWidget(erase)
     setattr(main_window, _ERASE_BOX_ATTR, erase)

@@ -416,7 +416,7 @@ def face_menu_at(
     menu.addSeparator()
     if paint:
         erase = bool(mpa.brush_settings(main_window)["erase"])
-        switch = menu.addAction("Switch to Paint\t1" if erase else "Switch to Erase\t3")
+        switch = menu.addAction("Switch to Paint\t3" if erase else "Switch to Erase\t3")
         switch.triggered.connect(lambda *_: mpa.set_erase(main_window, not erase))
     mode = menu.addAction(
         "Switch to Edit Alignments" if paint else "Switch to Paint Mask"
