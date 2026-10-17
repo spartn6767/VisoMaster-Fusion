@@ -78,6 +78,12 @@ def _ask(
     )
     box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(accept_button)
+    # QMessageBox sizes itself to its text; a minimum keeps the buttons readable.
+    box.setStyleSheet(
+        "QLabel#qt_msgbox_label, QLabel#qt_msgbox_informativelabel "
+        "{ min-width: 460px; } "
+        "QPushButton { min-width: 130px; padding: 6px 14px; }"
+    )
     box.exec()
     clicked = box.clickedButton()
     if clicked is accept_button:
