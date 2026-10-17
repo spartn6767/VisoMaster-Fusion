@@ -22,9 +22,11 @@ Single-letter shortcuts don't work while a text box (such as search) has focus. 
 | X | Face Compare (Paste > in the edit modes) |
 | Ctrl+0 | Fit to View |
 | Ctrl+1 | 100% zoom |
+| Ctrl+S | Save the workspace with its alignments and masks (asks where if it has no file yet) |
+| Ctrl+Shift+S | Save Workspace As |
 
 <!-- Tooltip keys: SHORTCUT_HINTS in app/ui/widgets/actions/shortcut_hints.py. -->
-<!-- Defined in `MainWindow.keyPressEvent` (`app/ui/main_ui.py`), except X, Ctrl+0 and Ctrl+1, which are View menu actions in the same file. -->
+<!-- Defined in `MainWindow.keyPressEvent` (`app/ui/main_ui.py`), except X, Ctrl+0 and Ctrl+1, which are View menu actions in the same file, and Ctrl+S / Ctrl+Shift+S, which are in `workspace_panel_actions.py`. -->
 
 ## Edit Alignments and Paint Mask
 

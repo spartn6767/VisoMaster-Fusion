@@ -7,3 +7,4 @@ Reference notes on how the app works today. For new feature write-ups, see [docs
 - [Paint Mask](paint-mask.md): includes how a painted mask carries to later frames
 - [Landmarks and alignments](landmarks-and-alignments.md): how landmark detection affects swaps and stored alignments
 - [Recording watermark](recording-watermark.md): the optional "modified by AI" notice on recorded videos
+- [Workspaces](workspaces.md): the Workspace section, Ctrl+S and recent workspaces

@@ -46,6 +46,12 @@ def workspace_fingerprint(main_window: Any) -> Optional[str]:
 def mark_saved(main_window: Any) -> None:
     """Call after the workspace was saved, loaded or started fresh."""
     setattr(main_window, _BASELINE_ATTR, workspace_fingerprint(main_window))
+    path = str(getattr(main_window, "current_workspace_path", "") or "")
+    from app.ui.widgets.actions import workspace_panel_actions
+
+    if path:
+        workspace_panel_actions.remember_workspace(main_window, path)
+    workspace_panel_actions.refresh_workspace_panel(main_window)
 
 
 def has_unsaved_changes(main_window: Any) -> bool:
