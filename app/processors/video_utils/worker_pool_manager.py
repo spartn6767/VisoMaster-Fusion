@@ -13,6 +13,16 @@ if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 
 
+def _debug_preview(what: str, frame_number: object) -> None:
+    """TEMP: Hair Mask debugging, remove. Prints who asked for / cancelled a preview."""
+    import traceback
+
+    callers = " <- ".join(
+        f"{f.name}:{f.lineno}" for f in traceback.extract_stack(limit=6)[-5:-1][::-1]
+    )
+    print(f"[HairMask debug] preview {what} frame={frame_number} from {callers}")
+
+
 class WorkerPoolManager(QObject):
     """
     Encapsulates all Threading, Queue, and VRAM lifecycle management.
@@ -282,6 +292,7 @@ class WorkerPoolManager(QObject):
 
     def cancel_single_frame_preview_state(self) -> None:
         """Immediately aborts any active or pending UI single-frame scrubs."""
+        _debug_preview("cancel", None)  # TEMP: Hair Mask debugging
         self.single_frame_request_generation += 1
         self.active_single_frame_request_generation = (
             self.single_frame_request_generation
@@ -323,6 +334,7 @@ class WorkerPoolManager(QObject):
         # Stop any previous single-frame worker before starting a new one to prevent
         # concurrent TensorRT inference crashes.
         prev = self.current_single_frame_worker
+        _debug_preview("request", frame_number)  # TEMP: Hair Mask debugging
 
         if synchronous:
             self.pending_single_frame_request = None
