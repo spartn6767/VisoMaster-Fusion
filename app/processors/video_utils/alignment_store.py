@@ -712,12 +712,14 @@ class AlignmentStore:
                 return None
             masked = self._mask_frames(layer)
             for n in reversed(masked[: bisect.bisect_right(masked, frame_number)]):
-                if n == frame_number and face_index is not None:
-                    continue
                 held = self._frames.get(n)
                 if held is None:
                     continue
-                for face in held.faces:
+                for i, face in enumerate(held.faces):
+                    # Another box for the same person on this frame (e.g. a second
+                    # detection) shares its mask; the face itself was checked above.
+                    if n == frame_number and i == face_index:
+                        continue
                     held_mask = getattr(face, layer)
                     if face.face_id == face_id and held_mask is not None:
                         return None if is_empty(held_mask) else held_mask

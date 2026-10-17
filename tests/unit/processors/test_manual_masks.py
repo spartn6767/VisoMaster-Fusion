@@ -158,3 +158,17 @@ def test_hair_masks_hold_reset_and_persist(tmp_path):
     )
     assert loaded.clear_masks("hair_mask") == 2
     assert loaded.mask_frame_count("hair_mask") == 0
+
+
+def test_second_box_for_same_person_shares_the_frames_mask():
+    store = AlignmentStore()
+    store.bind_media("/v.mp4")
+    face = {"bbox": [0.1, 0.1, 0.5, 0.5], "kps_5": mm.CANONICAL_KPS / 1000}
+    store.put(0, [dict(face, face_id="A")], 1, 1, "sig")
+    store.put(1, [dict(face, face_id="A"), dict(face, face_id="A")], 1, 1, "sig")
+    hair = mm.empty_mask(mm.HAIR_SPACE)
+    hair[1, 5:9, 5:9] = 255
+    store.update_face(1, 1, 1, 1, hair_mask=hair)
+    np.testing.assert_array_equal(store.effective_mask(1, 0, layer="hair_mask"), hair)
+    np.testing.assert_array_equal(store.effective_mask(1, 1, layer="hair_mask"), hair)
+    assert store.effective_mask(0, 0, layer="hair_mask") is None
