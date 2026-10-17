@@ -28,6 +28,12 @@ def _prompt(main_window: Any, text: str) -> Optional[bool]:
     skip = box.addButton("No Watermark", QtWidgets.QMessageBox.ButtonRole.NoRole)
     box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(add)
+    # QMessageBox sizes itself to its text; a minimum keeps the buttons readable.
+    box.setStyleSheet(
+        "QLabel#qt_msgbox_label, QLabel#qt_msgbox_informativelabel "
+        "{ min-width: 440px; } "
+        "QPushButton { min-width: 130px; padding: 6px 14px; }"
+    )
     box.exec()
     clicked = box.clickedButton()
     return True if clicked is add else False if clicked is skip else None
