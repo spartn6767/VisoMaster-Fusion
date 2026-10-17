@@ -400,3 +400,72 @@ def test_paste_run_ends_after_another_edit(main_window):
     assert mpa.paste_source_text(main_window, "mask", 0) == "From frame 1"
     mpa.apply_stroke(main_window, 2, 0, [tuple(KPS[0])], W, H, erase=False)
     assert mpa.paste_source_text(main_window, "mask", 0) == ""
+
+
+def _released_stroke(main_window, moved):
+    from PySide6 import QtCore
+
+    view = SimpleNamespace(scene=lambda: SimpleNamespace(removeItem=lambda item: None))
+    main_window._mask_paint_stroke = {
+        "frame": 1,
+        "face": 0,
+        "erase": False,
+        "points": [NOSE, NOSE],
+        "start": QtCore.QPoint(0, 0),
+        "moved": moved,
+        "item": None,
+        "path": None,
+        "size": (W, H),
+    }
+    event = SimpleNamespace(button=lambda: QtCore.Qt.MouseButton.LeftButton)
+    assert mpa.handle_mouse_release(main_window, view, event)
+
+
+def test_click_without_drag_paints_nothing(main_window):
+    store = main_window.alignments
+    _released_stroke(main_window, moved=False)
+    assert store.effective_mask(1, 0) is None and not store.can_undo()
+    _released_stroke(main_window, moved=True)
+    assert store.effective_mask(1, 0) is not None
+
+
+def test_double_click_on_face_pastes_earlier_mask(main_window):
+    store = main_window.alignments
+    mpa.apply_stroke(main_window, 0, 0, [NOSE], W, H, erase=False)
+    mpa.apply_stroke(main_window, 1, 0, [tuple(KPS[0])], W, H, erase=False)
+    first = store.effective_mask(0, 0).copy()
+    store.clear_history()
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 2)
+
+    # Frame 1's mask is the one frame 2 already shows, so frame 0's is used.
+    assert mpa.paste_or_add_mask_at(main_window, 2, 0.3, 0.3) == 0
+    assert np.array_equal(store.effective_mask(2, 0), first)
+    assert mpa.paste_source_text(main_window, "mask", 0) == "From frame 0"
+
+
+def test_double_click_without_face_pastes_earlier_face_and_mask(main_window):
+    store = main_window.alignments
+    mpa.apply_stroke(main_window, 1, 0, [NOSE], W, H, erase=False)
+    mpa.apply_stroke(main_window, 2, 0, [tuple(KPS[0])], W, H, erase=False)
+    masks = {n: store.effective_mask(n, 0).copy() for n in (1, 2)}
+    store.clear_history()
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 5)
+
+    assert mpa.paste_or_add_mask_at(main_window, 5, 0.35, 0.3) == 0
+    face = store.get(5, 1, 1, None)[0]
+    assert np.allclose(face["bbox"], [0.1, 0.05, 0.6, 0.6])
+    assert np.array_equal(store.effective_mask(5, 0), masks[2])
+    assert mpa.toolbar_action(main_window, "previous")
+    assert len(store.get(5, 1, 1, None)) == 1
+    assert np.array_equal(store.effective_mask(5, 0), masks[1])
+
+    assert store.undo() is not None and not store.can_undo()
+    assert not store.get(5, 1, 1, None)
+
+
+def test_double_click_far_from_faces_draws_centred_box(main_window):
+    store = main_window.alignments
+    main_window.videoSeekSlider = SimpleNamespace(value=lambda: 5)
+    assert mpa.paste_or_add_mask_at(main_window, 5, 0.9, 0.9) == 0
+    bbox = store.get(5, 1, 1, None)[0]["bbox"]
+    assert np.allclose(bbox, [0.65, 0.625, 1.0, 1.0])

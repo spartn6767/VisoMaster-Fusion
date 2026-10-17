@@ -9,7 +9,8 @@ Paint Mask works on a paused video frame. It needs **Settings > Detectors > Reus
 ## Painting
 
 - Click **Paint Mask** on the edit toolbar. The floating Paint Mask bar appears. Drag it by its edge to move it. Close it with its ✕ or by clicking Paint Mask again.
-- Left-drag over a face to paint. The stroke goes to the face nearest to where you start.
+- Left-drag over a face to paint. The stroke goes to the face nearest to where you start. A click without dragging paints nothing; it only selects that face.
+- **Double-click** on or near a face to paste the mask from the nearest earlier frame with stored faces, like < Paste. Where the frame has no face, a double-click copies the earlier frame's face together with its mask, at the position it had there. If no earlier face is near the click, it draws a box centred on the click for you to adjust in Edit Alignments. Either way, **Z** / **X** then try other frames, and one Ctrl+Z undoes the whole thing.
 - Strokes **add** to the mask. Hold **Shift** while painting, or turn on **Erase** on the bar, to **erase** instead.
 - **Size** and **Feather** are in frame pixels. **Opacity** only changes how see-through the overlay is, not the mask itself.
 - The mask is stored relative to the face's landmarks, so it moves, turns and scales with the face and survives a swapper model change.

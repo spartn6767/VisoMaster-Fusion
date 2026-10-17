@@ -28,6 +28,7 @@ _BAR_BUTTONS_ATTR = "_mask_bar_buttons"
 _PASTE_LABEL_ATTR = "_mask_paste_label"
 _PASTE_RUN_ATTR = "_paste_run"
 _CURSOR_ATTR = "_mask_brush_cursor"
+_MIN_DRAG_PIXELS = 3  # screen pixels; a click without a drag paints nothing
 _ADD_RGB = (0, 220, 120)
 _ERASE_RGB = (255, 60, 60)
 DEFAULT_BRUSH = {
@@ -206,7 +207,7 @@ def paste_step(
         }
     frames = store.face_frames()
     target = _nearest(frames, run["source"], step)
-    if mode == "mask":
+    if mode == "mask" and not run.get("added"):
         shown = store.effective_mask(frame_number, face_index)
 
         def source_mask(n: int) -> Optional[np.ndarray]:
@@ -233,17 +234,15 @@ def paste_step(
         aea._refresh(main_window)
         if mode == "mask":
             refresh_mask_overlay(main_window)
+    elif run.get("added"):
+        _add_pasted_face(main_window, mode, target, source_index, frame_number)
     elif mode == "mask":
         paste_mask_from_frame(
             main_window, target, source_index, frame_number, face_index
         )
     else:
         aea.paste_from_frame(
-            main_window,
-            target,
-            source_index,
-            frame_number,
-            None if run.get("added") else face_index,
+            main_window, target, source_index, frame_number, face_index
         )
     run.update(
         source=target,
@@ -272,16 +271,52 @@ def open_run_face(
 DEFAULT_NEW_FACE_HEIGHT = 0.2  # of the frame height
 
 
+def _is_near(bbox: Any, x: float, y: float) -> bool:
+    """Within one box width / height of the box centre."""
+    x1, y1, x2, y2 = bbox
+    return abs(x - (x1 + x2) / 2.0) <= x2 - x1 and abs(y - (y1 + y2) / 2.0) <= y2 - y1
+
+
+def _add_pasted_face(
+    main_window: "MainWindow",
+    mode: str,
+    source_frame: int,
+    source_index: int,
+    frame_number: int,
+) -> None:
+    """Adds a copy of a face from another frame; in mask mode with its mask too."""
+    store = main_window.alignments
+    with store.edit([frame_number]):
+        aea.paste_from_frame(main_window, source_frame, source_index, frame_number)
+        mask = store.effective_mask(source_frame, source_index)
+        if mode == "mask" and mask is not None:
+            index = len(aea._frame_faces(main_window, frame_number)) - 1
+            set_mask(main_window, frame_number, index, mask.copy())
+    if mode == "mask":
+        refresh_mask_overlay(main_window)
+
+
+def _select(
+    main_window: "MainWindow", mode: str, frame_number: int, index: int
+) -> None:
+    if mode == "mask":
+        set_active_face(main_window, frame_number, index)
+    else:
+        aea.select_face(main_window, frame_number, index)
+
+
 def paste_new_face(
     main_window: "MainWindow",
     frame_number: int,
     point: tuple[float, float],
     aspect: float = 1.0,
+    mode: str = "align",
 ) -> int:
     """Adds a face at a point where none is stored (normalised coords; aspect is
-    frame height / width). Pastes the nearest earlier frame's face if it is near
-    the point (and opens a Z / X run on it), else draws a box centred on the point
-    sized like that face (or a default size) for the landmarks to be fixed by hand."""
+    frame height / width). Pastes the nearest earlier frame's face (in mask mode
+    with its mask) if it is near the point and opens a Z / X run on it, else draws
+    a box centred on the point sized like that face (or a default size) for the
+    landmarks to be fixed by hand."""
     store = main_window.alignments
     x, y = point
     index = len(aea._frame_faces(main_window, frame_number))
@@ -290,16 +325,16 @@ def paste_new_face(
     source = _nearest(store.face_frames(), frame_number, -1)
     source_index = None if source is None else _source_face(main_window, source, point)
     if source is not None and source_index is not None:
-        x1, y1, x2, y2 = aea._frame_faces(main_window, source)[source_index]["bbox"]
-        width, height = x2 - x1, y2 - y1
-        if abs(x - (x1 + x2) / 2.0) <= width and abs(y - (y1 + y2) / 2.0) <= height:
+        bbox = aea._frame_faces(main_window, source)[source_index]["bbox"]
+        width, height = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        if _is_near(bbox, x, y):
             before = store.revision
-            aea.paste_from_frame(main_window, source, source_index, frame_number)
+            _add_pasted_face(main_window, mode, source, source_index, frame_number)
             setattr(
                 main_window,
                 _PASTE_RUN_ATTR,
                 {
-                    "mode": "align",
+                    "mode": mode,
                     "frame": frame_number,
                     "face": index,
                     "center": (x, y),
@@ -309,13 +344,40 @@ def paste_new_face(
                     "revision": store.revision,
                 },
             )
-            aea.select_face(main_window, frame_number, index)
+            _select(main_window, mode, frame_number, index)
             return index
-    bbox = np.array(
+    box = np.array(
         [x - width / 2, y - height / 2, x + width / 2, y + height / 2], np.float32
     )
-    index = aea.add_manual_face(main_window, frame_number, np.clip(bbox, 0.0, 1.0))
-    aea.select_face(main_window, frame_number, index)
+    index = aea.add_manual_face(main_window, frame_number, np.clip(box, 0.0, 1.0))
+    _select(main_window, mode, frame_number, index)
+    if mode == "mask":
+        refresh_mask_overlay(main_window)
+    return index
+
+
+def paste_or_add_mask_at(
+    main_window: "MainWindow",
+    frame_number: int,
+    x: float,
+    y: float,
+    aspect: float = 1.0,
+) -> int:
+    """Paint Mask double-click. On or near a face: paste the earlier frame's mask,
+    as < Paste does. Elsewhere: add the earlier frame's face with its mask, or a
+    box centred here if none is near."""
+    faces = aea._frame_faces(main_window, frame_number)
+    index = aea.face_index_at(faces, x, y) if faces else None
+    if index is None:
+        nearest = aea.nearest_face_index(faces, x, y)
+        if nearest is not None and _is_near(faces[nearest]["bbox"], x, y):
+            index = nearest
+    if index is not None:
+        set_active_face(main_window, frame_number, index)
+        paste_step(main_window, "mask", frame_number, index, -1)
+    else:
+        index = paste_new_face(main_window, frame_number, (x, y), aspect, mode="mask")
+    _sync_bar_buttons(main_window)
     return index
 
 
@@ -353,6 +415,8 @@ def toolbar_action(main_window: "MainWindow", key: str, *args: Any) -> Any:
         return aea.undo_edit(main_window, redo=key == "redo")
     frame_number = aea.current_frame_number(main_window)
     face_index = active_face(main_window)
+    if face_index is None and key in ("previous", "next"):
+        face_index = open_run_face(main_window, "mask", frame_number)
     result: Any = False
     if face_index is None:
         return result
@@ -954,6 +1018,8 @@ def handle_mouse_press(
             "face": face_index,
             "erase": erase,
             "points": [(pos.x() - rect.left(), pos.y() - rect.top())],
+            "start": QtCore.QPoint(event.pos()),
+            "moved": False,
             "item": item,
             "path": path,
             "size": (rect.width(), rect.height()),
@@ -1020,6 +1086,8 @@ def handle_mouse_move(
     rect = aea._pixmap_rect(main_window)
     if rect is None:
         return True
+    if (event.pos() - stroke["start"]).manhattanLength() >= _MIN_DRAG_PIXELS:
+        stroke["moved"] = True
     pos = view.mapToScene(event.pos())
     stroke["points"].append((pos.x() - rect.left(), pos.y() - rect.top()))
     stroke["path"].lineTo(pos)
@@ -1038,6 +1106,8 @@ def handle_mouse_release(
         view.scene().removeItem(stroke["item"])
     except RuntimeError:
         pass
+    if not stroke["moved"]:
+        return True
     frame_w, frame_h = stroke["size"]
     apply_stroke(
         main_window,
@@ -1047,6 +1117,26 @@ def handle_mouse_release(
         frame_w,
         frame_h,
         stroke["erase"],
+    )
+    return True
+
+
+def handle_double_click(
+    main_window: "MainWindow", view: QtWidgets.QGraphicsView, event: QtGui.QMouseEvent
+) -> bool:
+    if event.button() != QtCore.Qt.MouseButton.LeftButton:
+        return False
+    if not is_mask_paint_active(main_window):
+        return False
+    rect = aea._pixmap_rect(main_window)
+    pos = view.mapToScene(event.pos())
+    if rect is None or not rect.contains(pos):
+        return True
+    paste_or_add_mask_at(
+        main_window,
+        aea.current_frame_number(main_window),
+        *aea._to_normalized(rect, pos.x(), pos.y()),
+        aspect=rect.height() / rect.width(),
     )
     return True
 
