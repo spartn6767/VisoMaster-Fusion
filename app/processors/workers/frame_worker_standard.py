@@ -269,6 +269,29 @@ class StandardProcessor:
             }
             if capture_computed_masks and index is not None:
                 out["hair_capture"] = computed_hair_masks.setdefault(int(index), [])
+            if capture_computed_masks:  # TEMP: Hair Mask debugging, remove
+                from app.processors.utils import faceutil
+
+                k203 = fface.get("kps_203")
+                drift = None
+                if k203 is not None and len(k203) >= 5:
+                    p5 = faceutil.convert_face_landmark_x_to_5(
+                        np.asarray(k203, dtype=np.float32)
+                    )
+                    drift = round(float(np.abs(p5 - out["edit_kps"]).max()), 1)
+                edit = out["hair_edit"]
+                print(
+                    f"[HairMask debug] frame={alignment_frame} index={index} "
+                    f"target={target_id} "
+                    + (
+                        "edit=none"
+                        if edit is None
+                        else f"edit add={int((edit[0] > 0).sum())} "
+                        f"erase={int((edit[1] > 0).sum())}"
+                    )
+                    + f" kps5={np.round(out['edit_kps'][:2], 1).tolist()}"
+                    f" kps203_vs_kps5_px={drift}"
+                )
             return out
 
         def other_faces_kps(fface: dict) -> list:
