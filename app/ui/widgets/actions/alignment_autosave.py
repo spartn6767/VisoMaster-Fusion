@@ -1,4 +1,4 @@
-"""Periodic autosave of unsaved alignments, recoverable from File menu after a crash.
+"""Periodic autosave of unsaved alignments, recoverable from the Workspace section's menu after a crash.
 
 The autosave never marks the store as saved, so the save/discard prompts still
 appear. A clean exit (which saves the last workspace) deletes it.
@@ -29,7 +29,10 @@ def autosave_path(main_window: "MainWindow") -> Path:
 
 
 def install_autosave(main_window: "MainWindow") -> None:
-    """Starts the autosave timer and adds File > Recover Autosaved Alignments."""
+    """Starts the autosave timer and creates the Recover Autosaved Alignments action.
+
+    The Workspace section's menu shows the action (workspace_panel_actions).
+    """
     if getattr(main_window, _TIMER_ATTR, None) is not None:
         return
     timer = QtCore.QTimer()
@@ -40,8 +43,6 @@ def install_autosave(main_window: "MainWindow") -> None:
     setattr(main_window, _TIMER_ATTR, timer)
     action = QtGui.QAction("Recover Autosaved Alignments...")
     action.triggered.connect(partial(recover_autosave, main_window))
-    main_window.menuFile.insertAction(main_window.actionQuit_WithoutSaving, action)
-    main_window.menuFile.insertSeparator(main_window.actionQuit_WithoutSaving)
     setattr(main_window, ACTION_ATTR, action)
     _sync_action(main_window)
 

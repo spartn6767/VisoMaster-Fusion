@@ -63,7 +63,7 @@ Like other alignment edits, a Back of Head box is stored on its own frame only. 
 
 ## Autosave
 
-With **Settings > Detectors > Autosave Alignments** on (the default), unsaved alignments (including masks) are written to an autosave file every **Autosave Every** minutes (default 2). The **Save Alignments** button, right of Paint Mask, saves them with the workspace right away (it asks where if the workspace hasn't been saved yet). If the app closes unexpectedly, load the same video and use **File > Recover Autosaved Alignments...** to get them back. The autosave doesn't count as saving, so you're still asked to save before switching videos. A normal exit deletes it once everything is saved.
+With **Settings > Detectors > Autosave Alignments** on (the default), unsaved alignments (including masks) are written to an autosave file every **Autosave Every** minutes (default 2). The **Save Alignments** button, right of Paint Mask, saves them with the workspace right away (it asks where if the workspace hasn't been saved yet). If the app closes unexpectedly, load the same video and use **Recover Autosaved Alignments...** in the Workspace section's menu to get them back. The autosave doesn't count as saving, so you're still asked to save before switching videos. A normal exit deletes it once everything is saved.
 
 ## Moving between frames
 

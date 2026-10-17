@@ -7,10 +7,16 @@ A workspace file (.json) holds your target media, input faces, embeddings, found
 The **Workspace** section sits above Target Videos. Click its title to fold it away.
 
 - **Name:** the current workspace file, or "Unsaved workspace" if it has never been saved. A **•** after the name means there are unsaved changes. Hover it for the full path.
-- **Open...** opens a saved workspace (File > Load Saved Workspace).
+- **New** starts an empty workspace.
+- **Open...** opens a saved workspace.
 - **Save** saves in place, with the alignments and masks. It asks where if the workspace has no file yet. Shortcut: **Ctrl+S**.
 - **Save As...** saves to a new file. Shortcut: **Ctrl+Shift+S**.
-- **Recent** lists the last 10 workspaces you opened or saved. Missing files are greyed out; **Remove Missing** and **Clear List** tidy the list.
+- **Menu (list icon):**
+  - **Recent workspaces:** the last 10 you opened or saved. Missing files are greyed out; **Remove Missing** and **Clear List** tidy the list.
+  - **Reset to Last Session** reopens the session saved when the app last closed (`last_workspace.json`). **Save as Last Session** saves the current state as that session.
+  - **Recover Autosaved Alignments...** brings back alignments after a crash (see [Edit Alignments](edit-alignments.md)). It's greyed out when there's no autosave.
+
+These replace the workspace items that used to be in the File menu. New and Open are disabled while recording.
 
 Ctrl+S works anywhere in the main window, including in Edit Alignments and Paint Mask and while typing in a box.
 

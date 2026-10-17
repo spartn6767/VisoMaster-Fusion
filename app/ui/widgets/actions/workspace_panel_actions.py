@@ -18,6 +18,10 @@ RECENT_LIMIT = 10
 _MEDIA = Path(__file__).resolve().parents[2] / "core" / "media"
 _PANEL_ATTR = "workspacePanel"
 _LABEL_ATTR = "_workspace_panel_label"
+_RECORDING_LOCKED = {
+    "new": "workspacePanelNewButton",
+    "open": "workspacePanelOpenButton",
+}
 
 
 def recent_file(main_window: Any) -> Path:
@@ -104,8 +108,56 @@ def save_workspace(main_window: "MainWindow", save_as: bool = False) -> None:
     refresh_workspace_panel(main_window)
 
 
-def _populate_recent_menu(main_window: Any, menu: QtWidgets.QMenu) -> None:
+def new_workspace(main_window: Any) -> None:
+    from app.ui.widgets.actions import save_load_actions
+
+    save_load_actions.new_workspace(main_window)
+    refresh_workspace_panel(main_window)
+
+
+def reset_to_last_session(main_window: Any) -> None:
+    """Reopens last_workspace.json, the session saved when the app closed."""
+    open_workspace(main_window, str(main_window.last_workspace_path))
+
+
+def save_as_last_session(main_window: Any) -> None:
+    from app.ui.widgets.actions import save_load_actions
+
+    save_load_actions.save_current_workspace(
+        main_window, str(main_window.last_workspace_path)
+    )
+    refresh_workspace_panel(main_window)
+
+
+def _populate_menu(main_window: Any, menu: QtWidgets.QMenu) -> None:
     menu.clear()
+    menu.setToolTipsVisible(True)
+    _add_recent_actions(main_window, menu)
+    menu.addSeparator()
+    for text, tip, slot in (
+        (
+            "Reset to Last Session",
+            "Reopen the session saved when the app last closed",
+            reset_to_last_session,
+        ),
+        (
+            "Save as Last Session",
+            "Save the current state as the session the app reopens at startup",
+            save_as_last_session,
+        ),
+    ):
+        action = menu.addAction(text)
+        action.setToolTip(tip)
+        action.triggered.connect(lambda *_, s=slot: s(main_window))
+    from app.ui.widgets.actions import alignment_autosave
+
+    recover = getattr(main_window, alignment_autosave.ACTION_ATTR, None)
+    if recover is not None:
+        alignment_autosave._sync_action(main_window)
+        menu.addAction(recover)
+
+
+def _add_recent_actions(main_window: Any, menu: QtWidgets.QMenu) -> None:
     paths = recent_workspaces(main_window)
     if not paths:
         menu.addAction("No recent workspaces").setEnabled(False)
@@ -151,34 +203,43 @@ def install_workspace_panel(main_window: Any) -> QtWidgets.QWidget:
     row.setContentsMargins(0, 0, 0, 0)
     for key, icon, tip, slot in (
         (
+            "new",
+            body.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_FileIcon),
+            "New Workspace",
+            partial(new_workspace, main_window),
+        ),
+        (
             "open",
-            "open_file.png",
+            QtGui.QIcon(str(_MEDIA / "open_file.png")),
             "Open Workspace...",
             partial(open_workspace, main_window),
         ),
         (
             "save",
-            "save_file.png",
+            QtGui.QIcon(str(_MEDIA / "save_file.png")),
             "Save Workspace, with its alignments and masks (Ctrl+S)",
             partial(save_workspace, main_window, False),
         ),
         (
             "save_as",
-            "save_file_as.png",
+            QtGui.QIcon(str(_MEDIA / "save_file_as.png")),
             "Save Workspace As... (Ctrl+Shift+S)",
             partial(save_workspace, main_window, True),
         ),
     ):
         button = QtWidgets.QToolButton(body)
         button.setObjectName(f"workspacePanel_{key}")
-        button.setIcon(QtGui.QIcon(str(_MEDIA / icon)))
+        if key in _RECORDING_LOCKED:
+            # Disabled with the File menu loaders while recording.
+            setattr(main_window, _RECORDING_LOCKED[key], button)
+        button.setIcon(icon)
         button.setIconSize(QtCore.QSize(18, 18))
         button.setAutoRaise(True)
         button.setToolTip(tip)
         button.clicked.connect(lambda *_, s=slot: s())
         row.addWidget(button)
     recent = QtWidgets.QToolButton(body)
-    recent.setObjectName("workspacePanel_recent")
+    recent.setObjectName("workspacePanel_menu")
     recent.setIcon(
         body.style().standardIcon(
             QtWidgets.QStyle.StandardPixmap.SP_FileDialogDetailedView
@@ -186,10 +247,10 @@ def install_workspace_panel(main_window: Any) -> QtWidgets.QWidget:
     )
     recent.setIconSize(QtCore.QSize(18, 18))
     recent.setAutoRaise(True)
-    recent.setToolTip("Recent Workspaces")
+    recent.setToolTip("Recent Workspaces, Last Session and Recover Alignments")
     recent.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
     menu = QtWidgets.QMenu(recent)
-    menu.aboutToShow.connect(lambda: _populate_recent_menu(main_window, menu))
+    menu.aboutToShow.connect(lambda: _populate_menu(main_window, menu))
     recent.setMenu(menu)
     row.addWidget(recent)
     row.addStretch(1)

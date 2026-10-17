@@ -761,14 +761,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         )
         self.actionNew_Workspace = QtGui.QAction("New Workspace", self.menuFile)
 
+        # Workspace actions live in the Workspace section (workspace_panel_actions).
         self.menuFile.clear()
-        self.menuFile.addAction(self.actionNew_Workspace)
-        self.menuFile.addAction(self.actionLoad_SavedWorkspace)
-        self.menuFile.addAction(self.actionReset_to_LastWorkspace)
-        self.menuFile.addAction(self.actionSave_LastWorkspace)
-        self.menuFile.addAction(self.actionSave_CurrentWorkspace)
-        self.menuFile.addAction(self.actionSave_WorkspaceAs)
-        self.menuFile.addSeparator()
         self.menuFile.addAction(self.actionOpen_Videos_Folder)
         self.menuFile.addAction(self.actionOpen_Video_Files)
         self.menuFile.addAction(self.actionLoad_Source_Images_Folder)

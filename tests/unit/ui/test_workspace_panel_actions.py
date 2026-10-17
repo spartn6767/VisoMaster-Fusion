@@ -59,3 +59,41 @@ def test_panel_buttons_and_ctrl_s(tmp_path, monkeypatch):
     shortcuts["Ctrl+S"].activated.emit()
     shortcuts["Ctrl+Shift+S"].activated.emit()
     assert saves == [False, True, False, True]
+
+
+def test_new_button_and_menu(tmp_path, monkeypatch):
+    from app.ui.widgets.actions import save_load_actions
+
+    mw = _window(tmp_path)
+    mw.project_root_path = tmp_path
+    mw.actionRecover_Alignments = QtGui.QAction("Recover Autosaved Alignments...")
+    calls = []
+    monkeypatch.setattr(
+        save_load_actions, "new_workspace", lambda *a, **k: calls.append("new")
+    )
+    monkeypatch.setattr(
+        save_load_actions,
+        "load_saved_workspace",
+        lambda *a, **k: calls.append(("load", a[1:], k)),
+    )
+    monkeypatch.setattr(
+        save_load_actions,
+        "save_current_workspace",
+        lambda *a, **k: calls.append(("save", a[1:], k)),
+    )
+    panel = wpa.install_workspace_panel(mw)
+    buttons = {b.objectName(): b for b in panel.findChildren(QtWidgets.QToolButton)}
+    assert mw.workspacePanelNewButton is buttons["workspacePanel_new"]
+    assert mw.workspacePanelOpenButton is buttons["workspacePanel_open"]
+    buttons["workspacePanel_new"].click()
+    menu = buttons["workspacePanel_menu"].menu()
+    wpa._populate_menu(mw, menu)
+    actions = {a.text(): a for a in menu.actions()}
+    assert "No recent workspaces" in actions
+    assert actions["Recover Autosaved Alignments..."].isEnabled() is False
+    actions["Reset to Last Session"].trigger()
+    actions["Save as Last Session"].trigger()
+    last = str(mw.last_workspace_path)
+    assert calls[0] == "new"
+    assert calls[1][0] == "load" and last in repr(calls[1])
+    assert calls[2][0] == "save" and last in repr(calls[2])

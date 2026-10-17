@@ -630,7 +630,7 @@ SETTINGS_LAYOUT_DATA: Any = {
             "level": 1,
             "label": "Autosave Alignments",
             "default": True,
-            "help": "Write unsaved alignments (including manual edits and painted masks) to an autosave file every few minutes. After a crash, load the same video and use File > Recover Autosaved Alignments. Doesn't count as saving the workspace.",
+            "help": "Write unsaved alignments (including manual edits and painted masks) to an autosave file every few minutes. After a crash, load the same video and use Recover Autosaved Alignments in the Workspace section's menu. Doesn't count as saving the workspace.",
         },
         "AlignmentsAutosaveIntervalSlider": {
             "level": 1,
