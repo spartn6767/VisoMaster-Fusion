@@ -17,6 +17,7 @@ import torch
 import gc
 
 import app.ui.widgets.actions.common_actions as common_widget_actions
+from app.helpers import embedding_thumbnails
 from app.ui.widgets.actions import video_control_actions
 from app.ui.widgets.actions import graphics_view_actions
 from app.ui.widgets.actions import card_actions
@@ -1797,10 +1798,13 @@ class EmbeddingCardButton(CardButton):
         # Support both legacy dictionary maps and new batched list maps
         self._kv_map: Dict | None = None
         self._kv_map_list: List[Dict] | None = None
+        self.thumbnail: str | None = None
+        self.merge_method: str | None = None
+        self.source_count: int | None = None
 
         self.setCheckable(True)
-        self.setText(embedding_name)
-        self.setToolTip(embedding_name)
+        self._show_picture()
+        self._refresh_tooltip()
         self.clicked.connect(self.load_embedding)
 
         # Set the context menu policy to trigger the custom context menu on right-click
@@ -1840,15 +1844,46 @@ class EmbeddingCardButton(CardButton):
         has_legacy_map = self._kv_map is not None and len(self._kv_map) > 0
         has_new_map_list = self._kv_map_list is not None and len(self._kv_map_list) > 0
 
-        # If valid tensors are loaded, change the text color to the accent and update tooltip
+        # If valid tensors are loaded, outline the card in the accent color
         if has_legacy_map or has_new_map_list:
             # Using the UI's native accent color (#4090a3) for consistency
-            self.setStyleSheet("color: #4090a3;")
-            self.setToolTip(f"{self.embedding_name} (Includes K/V Maps)")
+            self.setStyleSheet("QPushButton:!checked { border: 2px solid #4090a3; }")
+            self._refresh_tooltip()
         else:
             # Reset to default UI style
             self.setStyleSheet("")
-            self.setToolTip(self.embedding_name)
+            self._refresh_tooltip()
+
+    def set_creation_details(self, details: Dict[str, Any]) -> None:
+        """Stores how the embedding was made and shows its picture."""
+        self.thumbnail = details.get("thumbnail")
+        self.merge_method = details.get("merge_method")
+        self.source_count = details.get("source_count")
+        self._show_picture()
+        self._refresh_tooltip()
+
+    def _show_picture(self) -> None:
+        pixmap = QtGui.QPixmap()
+        data = embedding_thumbnails.thumbnail_bytes(self.thumbnail)
+        if not (data and pixmap.loadFromData(data)):
+            pixmap.loadFromData(
+                embedding_thumbnails.thumbnail_bytes(
+                    embedding_thumbnails.no_image_thumbnail()
+                )
+            )
+        self.setText("")
+        self.setIcon(QtGui.QIcon(pixmap))
+
+    def _refresh_tooltip(self) -> None:
+        self.setToolTip(
+            embedding_thumbnails.tooltip_text(
+                self.embedding_name,
+                self.thumbnail,
+                self.merge_method,
+                self.source_count,
+                bool(self._kv_map) or bool(self._kv_map_list),
+            )
+        )
 
     def set_embedding(self, embedding_swap_model: str, embedding: np.ndarray) -> None:
         self.embedding_store[embedding_swap_model] = embedding
@@ -2057,6 +2092,22 @@ class CreateEmbeddingDialog(QtWidgets.QDialog):
         if kps_5_list:
             final_embedding_store["kps_5"] = np.mean(kps_5_list, axis=0)
 
+        # Picture: the source face closest to the merged identity
+        creation_details: dict[str, Any] = {
+            "merge_method": self.merge_type,
+            "source_count": len(self.selected_faces),
+        }
+        closest = embedding_thumbnails.closest_face_index(
+            final_embedding_store,
+            [face.embedding_store for face in self.selected_faces],
+        )
+        if closest is not None:
+            thumbnail = embedding_thumbnails.encode_thumbnail(
+                getattr(self.selected_faces[closest], "cropped_face", None)
+            )
+            if thumbnail:
+                creation_details["thumbnail"] = thumbnail
+
         # 2. Extract and Collect RAW K/V Maps (Deferred Merging)
         final_kv_map_list = []
         if self.include_kv_checkbox.isChecked():
@@ -2131,6 +2182,7 @@ class CreateEmbeddingDialog(QtWidgets.QDialog):
             main_window=self.main_window,
             embedding_name=self.embedding_name,
             embedding_store=final_embedding_store,
+            details=creation_details,
             embedding_id=embedding_id,
         )
 

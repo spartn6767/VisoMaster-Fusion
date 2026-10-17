@@ -16,6 +16,7 @@ import re
 import traceback  # Import traceback for error logging
 from send2trash import send2trash
 
+from app.helpers import embedding_thumbnails
 from app.ui.widgets.actions import common_actions as common_widget_actions
 from app.ui.widgets.actions import watermark_actions
 from app.ui.widgets.actions import card_actions
@@ -394,6 +395,7 @@ def _load_job_embeddings(main_window: "MainWindow", data: dict):
             embedding_data["embedding_name"],
             embedding_store,
             embedding_id=embedding_id,
+            details=embedding_thumbnails.metadata_from_payload(embedding_data),
         )
 
         # Restore KV map if it exists
@@ -1261,6 +1263,7 @@ def _serialize_job_data(main_window: "MainWindow") -> dict:
                 for embed_model, embedding in embed_button.embedding_store.items()
             },
             "embedding_name": embed_button.embedding_name,
+            **embedding_thumbnails.metadata_of(embed_button),
             "kv_map": kv_map_path,
         }
 

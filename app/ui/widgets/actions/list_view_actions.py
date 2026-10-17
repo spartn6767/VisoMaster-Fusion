@@ -438,7 +438,11 @@ def apply_face_thumbnail_size(
     button_size = QtCore.QSize(*button_size_tuple)
     grid_size_with_padding = button_size + QtCore.QSize(4, 4)
 
-    for listWidget in (main_window.targetFacesList, main_window.inputFacesList):
+    for listWidget in (
+        main_window.targetFacesList,
+        main_window.inputFacesList,
+        main_window.inputEmbeddingsList,
+    ):
         listWidget.setGridSize(grid_size_with_padding)
         for i in range(listWidget.count()):
             list_item = listWidget.item(i)
@@ -550,6 +554,7 @@ def create_and_add_embed_button_to_list(
     embedding_name: str,
     embedding_store: dict,
     embedding_id: str,
+    details: dict | None = None,
 ) -> None:
     inputEmbeddingsList = main_window.inputEmbeddingsList
     embed_button = widget_components.EmbeddingCardButton(
@@ -558,12 +563,22 @@ def create_and_add_embed_button_to_list(
         embedding_store=embedding_store,
         embedding_id=embedding_id,
     )
-    embed_button.setStyleSheet("QPushButton { padding: 2px 8px; }")
-
-    size = embed_button.sizeHint()
-    size.setHeight(24)
-    size.setWidth(max(size.width(), 60))
+    if details:
+        embed_button.set_creation_details(details)
+    size = QtCore.QSize(*_get_face_button_size(main_window))
     embed_button.setFixedSize(size)
+    embed_button.setIconSize(size - QtCore.QSize(8, 8))
+    # Picture cards fill rows left to right and wrap, like the input faces
+    inputEmbeddingsList.setFlow(QtWidgets.QListView.Flow.LeftToRight)
+    inputEmbeddingsList.setWrapping(True)
+    inputEmbeddingsList.setResizeMode(QtWidgets.QListView.ResizeMode.Adjust)
+    inputEmbeddingsList.setVerticalScrollBarPolicy(
+        QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    inputEmbeddingsList.setHorizontalScrollBarPolicy(
+        QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    inputEmbeddingsList.setGridSize(size + QtCore.QSize(4, 4))
 
     list_item = QtWidgets.QListWidgetItem(inputEmbeddingsList)
     list_item.setSizeHint(size)
