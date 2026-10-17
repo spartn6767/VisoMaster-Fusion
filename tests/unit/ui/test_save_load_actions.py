@@ -1481,3 +1481,25 @@ def test_get_saved_execution_provider(tmp_path, monkeypatch):
 
     path.write_text(json.dumps({"control": {}}))
     assert save_load_actions.get_saved_execution_provider(path) is None
+
+
+def test_save_embeddings_to_file_writes_creation_details(tmp_path, monkeypatch):
+    target_file = tmp_path / "embeddings.json"
+    main_window = _make_embedding_main_window(tmp_path)
+    button = _make_embedding_button()
+    button.thumbnail = "abc="
+    button.merge_method = "Median"
+    button.source_count = 3
+    main_window.merged_embeddings = {"embed_1": button}
+    monkeypatch.setattr(
+        save_load_actions.QtWidgets,
+        "QFileDialog",
+        SimpleNamespace(getSaveFileName=MagicMock(return_value=(str(target_file), ""))),
+    )
+
+    save_load_actions.save_embeddings_to_file(main_window)
+
+    written = json.loads(target_file.read_text())
+    assert written[0]["thumbnail"] == "abc="
+    assert written[0]["merge_method"] == "Median"
+    assert written[0]["source_count"] == 3

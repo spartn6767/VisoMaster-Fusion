@@ -37,6 +37,8 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFont, QDrag, QPixmap, QAction
 
+from app.helpers import embedding_thumbnails
+
 # Dark theme with red accent
 DARK_BG = "#1A1A1A"
 DARKER_BG = "#121212"
@@ -56,10 +58,15 @@ ENTRY_WIDTH = 220
 STACK_SPACING = 12
 
 
+def _extra_fields(item):
+    """Fields besides the name and vectors (picture, K/V map, merge details)."""
+    return {k: v for k, v in item.items() if k not in ("name", "embedding_store")}
+
+
 class FileLoader(QObject):
     """Worker thread for loading and parsing files."""
 
-    finished = Signal(object, str)  # Use object for OrderedDict
+    finished = Signal(object, str, object)  # Use object for OrderedDict
 
     def __init__(self, file_paths):
         super().__init__()
@@ -68,6 +75,7 @@ class FileLoader(QObject):
     def run(self):
         # MARKER: Use OrderedDict to guarantee preservation of file order.
         embedding_data = OrderedDict()
+        entry_extras = {}
         file_type = ""
         for file_path in self.file_paths:
             try:
@@ -78,6 +86,7 @@ class FileLoader(QObject):
                         for item in content:
                             if "name" in item and "embedding_store" in item:
                                 embedding_data[item["name"]] = item["embedding_store"]
+                                entry_extras[item["name"]] = _extra_fields(item)
                 else:
                     file_type = "txt"
                     with open(file_path, "r", encoding="utf-8") as file:
@@ -92,13 +101,14 @@ class FileLoader(QObject):
                                 embedding_data[current_name].append(line.strip())
             except Exception as e:
                 print(f"[ERROR] Error loading file {file_path}: {e}")
-        self.finished.emit(embedding_data, file_type)
+        self.finished.emit(embedding_data, file_type, entry_extras)
 
 
 class EntryWidget(QFrame):
-    def __init__(self, name, parent=None):
+    def __init__(self, name, parent=None, thumbnail=None):
         super().__init__(parent)
         self.name = name
+        self.thumbnail = thumbnail
         self.setup_ui()
         self.drag_start_pos = None
 
@@ -115,6 +125,14 @@ class EntryWidget(QFrame):
         self.checkbox.setChecked(False)
         self.checkbox.stateChanged.connect(self.update_selection_style)
         layout.addWidget(self.checkbox, 0, Qt.AlignCenter)
+        thumbnail_data = embedding_thumbnails.thumbnail_bytes(self.thumbnail)
+        pixmap = QPixmap()
+        if thumbnail_data and pixmap.loadFromData(thumbnail_data):
+            picture = QLabel()
+            picture.setPixmap(
+                pixmap.scaled(44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
+            layout.addWidget(picture, 0, Qt.AlignCenter)
 
         self.name_label = QLabel(self.name)
         self.name_label.setWordWrap(True)
@@ -256,6 +274,7 @@ class EntryWidget(QFrame):
                     {
                         "name": item.name,
                         "embedding_store": main_window.embedding_data[item.name],
+                        **main_window.entry_extras.get(item.name, {}),
                     }
                 )
 
@@ -437,6 +456,7 @@ class EmbeddingGUI(QWidget):
         # MARKER: Initialize with OrderedDict
         self.embedding_data = OrderedDict()
         self.original_embedding_data = OrderedDict()
+        self.entry_extras = {}
         self.last_clicked_widget = None
         self.undo_stack = []
         self.redo_stack = []
@@ -751,11 +771,12 @@ class EmbeddingGUI(QWidget):
         self.additive_load_button.setEnabled(False)
         self.load_button.setText("Loading...")
 
-    def on_loading_finished(self, new_data, file_type):
+    def on_loading_finished(self, new_data, file_type, new_extras=None):
         if self.current_load_mode == "replace":
             self.embedding_data = new_data
             # MARKER: The loaded file's order is now the new "Original" order.
             self.original_embedding_data = copy.deepcopy(new_data)
+            self.entry_extras = dict(new_extras or {})
             self.undo_stack.clear()
             self.redo_stack.clear()
 
@@ -765,6 +786,8 @@ class EmbeddingGUI(QWidget):
                 if name not in self.embedding_data:
                     self.embedding_data[name] = data
                     self.original_embedding_data[name] = copy.deepcopy(data)
+                    if name in (new_extras or {}):
+                        self.entry_extras[name] = new_extras[name]
 
         self.current_file_type = file_type
         # Block signals to prevent apply_sorting from firing accidentally
@@ -798,7 +821,11 @@ class EmbeddingGUI(QWidget):
             for j in range(ITEMS_PER_STACK):
                 if item_idx < total_items:
                     name = names[item_idx]
-                    entry_widget = EntryWidget(name, stack_layout.parentWidget())
+                    entry_widget = EntryWidget(
+                        name,
+                        stack_layout.parentWidget(),
+                        self.entry_extras.get(name, {}).get("thumbnail"),
+                    )
                     stack_layout.addWidget(entry_widget)
                     item_idx += 1
                 else:
@@ -822,6 +849,8 @@ class EmbeddingGUI(QWidget):
                 else:
                     new_embedding_data[name] = data
             self.embedding_data = new_embedding_data
+            if old_name in self.entry_extras:
+                self.entry_extras[new_name] = self.entry_extras[old_name]
             self.populate_entries()
             self.sorting_combo.setCurrentText("Manual")
 
@@ -936,7 +965,11 @@ class EmbeddingGUI(QWidget):
         try:
             if file_path.endswith(".json"):
                 json_data = [
-                    {"name": name, "embedding_store": values}
+                    {
+                        "name": name,
+                        "embedding_store": values,
+                        **self.entry_extras.get(name, {}),
+                    }
                     for name, values in data_to_save.items()
                 ]
                 with open(file_path, "w", encoding="utf-8") as file:
@@ -1037,6 +1070,7 @@ class EmbeddingGUI(QWidget):
                             i += 1
 
                     self.embedding_data[name] = item["embedding_store"]
+                    self.entry_extras[name] = _extra_fields(item)
                     added_count += 1
 
             if added_count > 0:

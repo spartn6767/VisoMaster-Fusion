@@ -550,6 +550,7 @@ def create_and_add_embed_button_to_list(
     embedding_name: str,
     embedding_store: dict,
     embedding_id: str,
+    details: dict | None = None,
 ) -> None:
     inputEmbeddingsList = main_window.inputEmbeddingsList
     embed_button = widget_components.EmbeddingCardButton(
@@ -558,6 +559,8 @@ def create_and_add_embed_button_to_list(
         embedding_store=embedding_store,
         embedding_id=embedding_id,
     )
+    if details:
+        embed_button.set_creation_details(details)
     embed_button.setStyleSheet("QPushButton { padding: 2px 8px; }")
 
     size = embed_button.sizeHint()

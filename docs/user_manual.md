@@ -791,6 +791,8 @@ These global swap-behavior settings live in the Settings tab and affect how sour
 
 ### 15.10 Embedding Manager
 
+**Embedding pictures:** when you create an embedding from input faces, the input face whose identity is closest to the merged result becomes the embedding card's picture. Hover the card to see it larger, together with how it was made (for example "Median of 6 faces"). The picture and these details are saved with the embedding in embeddings files, workspaces and jobs, and the Embedding Editor keeps them and shows the picture. Embeddings created before this feature have no picture.
+
 The **Advanced Embedding Editor** is available from the main UI. It loads `.json` embedding files produced by the face-card system, displays each stored identity as a named card, and lets you select, reorder, rename, and save embeddings between sessions. Main actions include **Load File(s)**, **Load Additive**, **Save As**, **Save Selected**, drag-and-drop reordering, multi-select with **Select All** / **Deselect All**, sorting (**Manual**, **Original**, **A-Z**, **Z-A**), and a search filter. Undo/redo is supported through Ctrl+Z / Ctrl+Shift+Z.
 
 ### 15.11 Experimental Settings

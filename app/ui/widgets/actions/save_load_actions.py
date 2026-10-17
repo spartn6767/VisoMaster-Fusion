@@ -13,6 +13,7 @@ from PySide6 import QtWidgets, QtCore
 import numpy as np
 import torch
 
+from app.helpers import embedding_thumbnails
 from app.ui.widgets import widget_components
 from app.ui.widgets.actions import common_actions as common_widget_actions
 from app.ui.widgets.actions import unsaved_changes_actions
@@ -388,6 +389,7 @@ def open_embeddings_from_file(main_window: "MainWindow"):
                         embed_data["name"],
                         embedding_store,
                         embedding_id=embedding_id,
+                        details=embedding_thumbnails.metadata_from_payload(embed_data),
                     )
 
                     # Restore KV map if it exists
@@ -508,6 +510,7 @@ def save_embeddings_to_file(main_window: "MainWindow", save_as=False):
                     k: v.tolist() for k, v in embed_button.embedding_store.items()
                 },  # Convert embeddings to lists
                 "kv_map": kv_map_path,  # Save the path to JSON file
+                **embedding_thumbnails.metadata_of(embed_button),
             }
         )
 
@@ -841,6 +844,7 @@ def load_saved_workspace(
                     embedding_name,
                     embedding_store_loaded,
                     embedding_id=embedding_id,
+                    details=embedding_thumbnails.metadata_from_payload(embedding_data),
                 )
 
                 if embedding_id in main_window.merged_embeddings:
@@ -1529,6 +1533,7 @@ def save_current_workspace(
 
         embeddings_data[embedding_id] = {
             "embedding_name": embedding_button.embedding_name,
+            **embedding_thumbnails.metadata_of(embedding_button),
             "embedding_store": {
                 model: emb.tolist()
                 for model, emb in embedding_button.embedding_store.items()
